@@ -1,0 +1,40 @@
+{
+  "name": "nonograms",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "fmt": "prettier --write .",
+    "preview": "vite preview",
+    "serve": "vite",
+    "test": "run-p test:check test:fmt test:lint",
+    "test:check": "tsc --noEmit",
+    "test:fmt": "prettier --check .",
+    "test:lint": "eslint --ext .js,.cjs,.mjs,.ts ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ianprime0509/nonograms.git"
+  },
+  "author": {
+    "name": "Ian Johnson",
+    "email": "ian@ianjohnson.dev"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ianprime0509/nonograms/issues"
+  },
+  "homepage": "https://github.com/ianprime0509/nonograms#readme",
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^5.47.0",
+    "@typescript-eslint/parser": "^5.47.0",
+    "eslint": "^8.30.0",
+    "npm-run-all": "^4.1.5",
+    "prettier": "^2.8.1",
+    "vite": "^4.0.3"
+  },
+  "dependencies": {
+    "lit": "^2.5.0"
+  }
+}

@@ -1,0 +1,70 @@
+<?xml version="1.0"?>
+<!DOCTYPE pbn SYSTEM "https://webpbn.com/pbn-0.3.dtd">
+<puzzleset>
+<source>webpbn.com</source>
+
+<puzzle type="grid" defaultcolor="black">
+<title>Laissez...</title>
+<author>Kristen Coolman</author>
+<authorid>kristen</authorid>
+<copyright>(c) Copyright 2011 by Kristen Coolman</copyright>
+<id>#12612 (v.1)</id>
+<description>...les Bons Temps Rouler!
+Let the Good Times Roll;
+It&apos;s hard to do a passable Mardi Gras-themed puzzle, when we don&apos;t have purple or gold!</description>
+<note>published,definitely unique,definitely line/color solvable</note>
+
+<color name="white" char=".">FFFFFF</color>
+<color name="black" char="X">000000</color>
+<color name="red" char="*">FF0000</color>
+<color name="green" char="%">00B000</color>
+<color name="blue" char="@">4040FF</color>
+
+<clues type="columns">
+<line><count>20</count></line>
+<line><count>20</count></line>
+<line><count>4</count><count color="green">9</count><count>7</count></line>
+<line><count color="green">10</count><count>5</count></line>
+<line><count color="green">10</count><count>4</count></line>
+<line><count>1</count><count>3</count><count color="green">9</count><count>2</count></line>
+<line><count>1</count><count>4</count><count color="green">9</count><count>1</count></line>
+<line><count>2</count><count>3</count><count color="green">3</count><count color="red">3</count><count color="green">2</count></line>
+<line><count>2</count><count>2</count><count color="green">3</count><count color="red">4</count></line>
+<line><count>2</count><count color="red">1</count><count color="red">2</count></line>
+<line><count>2</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="red">2</count></line>
+<line><count>2</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="red">2</count></line>
+<line><count>2</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count>2</count><count color="red">3</count><count>1</count></line>
+<line><count>2</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count>3</count><count color="red">1</count><count>2</count></line>
+<line><count>2</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count>3</count><count>4</count></line>
+<line><count>2</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count>3</count><count>5</count></line>
+<line><count>2</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count>2</count><count>7</count></line>
+<line><count>1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count>9</count></line>
+<line><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count>12</count></line>
+<line><count>20</count></line>
+</clues>
+
+<clues type="rows">
+<line><count>3</count><count>13</count><count color="blue">1</count><count>1</count></line>
+<line><count>3</count><count>10</count><count color="blue">1</count><count color="red">1</count><count>1</count></line>
+<line><count>3</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count>1</count></line>
+<line><count>3</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count>1</count></line>
+<line><count>2</count><count color="green">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count>1</count></line>
+<line><count>2</count><count color="green">2</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count>1</count></line>
+<line><count>2</count><count color="green">3</count><count>2</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count color="red">1</count><count color="blue">1</count><count>1</count></line>
+<line><count>2</count><count color="green">3</count><count>3</count><count color="blue">1</count><count color="red">1</count><count>4</count><count color="blue">1</count><count color="red">1</count><count>1</count></line>
+<line><count>2</count><count color="green">3</count><count>4</count><count>5</count><count>2</count></line>
+<line><count>2</count><count color="green">4</count><count>3</count><count>4</count><count>2</count></line>
+<line><count>2</count><count color="green">7</count><count>2</count></line>
+<line><count>2</count><count color="green">7</count><count>3</count></line>
+<line><count>2</count><count color="green">7</count><count>3</count></line>
+<line><count>3</count><count color="green">4</count><count color="red">1</count><count>4</count></line>
+<line><count>3</count><count color="green">4</count><count color="red">7</count><count>4</count></line>
+<line><count>4</count><count color="green">3</count><count color="red">2</count><count color="red">1</count><count>5</count></line>
+<line><count>5</count><count color="green">3</count><count color="red">5</count><count>6</count></line>
+<line><count>5</count><count color="green">3</count><count color="red">4</count><count>6</count></line>
+<line><count>6</count><count color="green">1</count><count>7</count></line>
+<line><count>7</count><count>8</count></line>
+</clues>
+
+</puzzle>
+</puzzleset>
