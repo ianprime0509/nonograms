@@ -2,7 +2,7 @@
 <interface>
   <template class="NonogramsApplicationWindow" parent="AdwApplicationWindow">
     <property name="default-width">600</property>
-    <property name="default-height">400</property>
+    <property name="default-height">600</property>
     <property name="content">
       <object class="GtkBox">
         <property name="orientation">vertical</property>
@@ -10,7 +10,7 @@
           <object class="AdwHeaderBar" />
         </child>
         <child>
-          <object class="NonogramsView">
+          <object class="NonogramsView" id="view">
             <property name="hexpand">1</property>
             <property name="vexpand">1</property>
           </object>

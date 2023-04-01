@@ -6,6 +6,7 @@ const gtk = @import("gtk");
 const cairo = @import("cairo");
 const pango = @import("pango");
 const pangocairo = @import("pangocairo");
+const pbn = @import("pbn.zig");
 const ArenaAllocator = std.heap.ArenaAllocator;
 const raw_c_allocator = std.heap.raw_c_allocator;
 
@@ -17,6 +18,11 @@ const Color = struct {
     const white = Color{ .r = 1, .g = 1, .b = 1 };
     const black = Color{ .r = 0, .g = 0, .b = 0 };
     const red = Color{ .r = 1, .g = 0, .b = 0 };
+
+    fn fromPbn(color: pbn.Color) !Color {
+        const rgb = try color.toFloatRgb();
+        return .{ .r = rgb.r, .g = rgb.g, .b = rgb.b };
+    }
 };
 
 const Hint = struct {
@@ -25,14 +31,16 @@ const Hint = struct {
 };
 
 const State = struct {
-    colors: []Color,
-    selected_color: Color,
+    tile_colors: []?Color,
+    background_color: Color,
+    default_color: Color,
+    selected_color: ?Color,
     row_hints: [][]Hint,
     max_row_hints: usize,
     column_hints: [][]Hint,
     max_column_hints: usize,
 
-    fn colorIndex(self: State, row: usize, column: usize) ?usize {
+    fn tileIndex(self: State, row: usize, column: usize) ?usize {
         const row_in_bounds = row >= self.max_column_hints and row < self.max_column_hints + self.row_hints.len;
         const column_in_bounds = column >= self.max_row_hints and column < self.max_row_hints + self.column_hints.len;
         if (row_in_bounds and column_in_bounds) {
@@ -94,9 +102,9 @@ pub const View = extern struct {
     pub const Private = struct {
         drawing_area: *gtk.DrawingArea,
         draw_start: Point,
-        state: State,
-        dimensions: Dimensions,
-        arena: ArenaAllocator,
+        dimensions: ?Dimensions,
+        state: ?State,
+        state_arena: ArenaAllocator,
 
         pub var offset: c_int = 0;
     };
@@ -130,53 +138,80 @@ pub const View = extern struct {
         _ = drag.connectDragUpdate(*Self, &handleDragUpdate, self, .{});
         drawing_area.addController(drag.as(gtk.EventController));
 
-        self.private().arena = ArenaAllocator.init(raw_c_allocator);
-        const a = self.private().arena.allocator();
+        // Does not currently work: https://gitlab.gnome.org/GNOME/gtk/-/issues/5561
+        const drag_secondary = gtk.GestureDrag.new();
+        drag_secondary.setButton(gdk.BUTTON_SECONDARY);
+        _ = drag_secondary.connectDragBegin(*Self, &handleDragBeginSecondary, self, .{});
+        _ = drag_secondary.connectDragUpdate(*Self, &handleDragUpdateSecondary, self, .{});
+        drawing_area.addController(drag_secondary.as(gtk.EventController));
 
-        const rows = 10;
-        const columns = 15;
-        const row_hints = a.alloc([]Hint, rows) catch @panic("OOM");
-        for (row_hints) |*row| {
-            row.* = a.alloc(Hint, 3) catch @panic("OOM");
-            for (row.*) |*hint| {
-                hint.* = Hint{ .n = 12, .color = Color.black };
-            }
-        }
-        const column_hints = a.alloc([]Hint, columns) catch @panic("OOM");
-        for (column_hints) |*column| {
-            column.* = a.alloc(Hint, 3) catch @panic("OOM");
-            for (column.*) |*hint| {
-                hint.* = Hint{ .n = 12, .color = Color.black };
-            }
-        }
-        const colors = a.alloc(Color, rows * columns) catch @panic("OOM");
-        for (colors) |*color| {
-            color.* = Color.white;
-        }
-        self.private().state = .{
-            .colors = colors,
-            .selected_color = Color.black,
-            .row_hints = row_hints,
-            .max_row_hints = 3,
-            .column_hints = column_hints,
-            .max_column_hints = 3,
-        };
-        self.private().dimensions = .{
-            .board_pos = .{ .x = 0, .y = 0 },
-            .tile_size = 0,
-        };
+        self.private().state_arena = ArenaAllocator.init(raw_c_allocator);
     }
 
     fn dispose(self: *Self) callconv(.C) void {
         while (self.getFirstChild()) |child| child.unparent();
-        self.private().arena.deinit();
+        self.private().state_arena.deinit();
         Class.parent.?.callDispose(self.as(gobject.Object));
     }
 
-    fn draw(_: *gtk.DrawingArea, cr: *cairo.Context, _: c_int, _: c_int, user_data: ?*anyopaque) callconv(.C) void {
+    pub fn load(self: *Self, puzzle: pbn.Puzzle) void {
+        _ = self.private().state_arena.reset(.retain_capacity);
+        const allocator = self.private().state_arena.allocator();
+
+        const row_clues = puzzle.clues.get(.rows) orelse return;
+        const column_clues = puzzle.clues.get(.columns) orelse return;
+        const rows = row_clues.lines.len;
+        const row_hints = allocator.alloc([]Hint, rows) catch @panic("OOM");
+        var max_row_hints: usize = 0;
+        for (row_hints, row_clues.lines) |*row, line| {
+            row.* = allocator.alloc(Hint, line.counts.len) catch @panic("OOM");
+            max_row_hints = @max(max_row_hints, line.counts.len);
+            for (row.*, line.counts) |*hint, count| {
+                const color_name = count.color orelse puzzle.default_color;
+                const color = puzzle.colors.get(color_name) orelse pbn.Color.black;
+                hint.* = Hint{ .n = count.n, .color = Color.fromPbn(color) catch Color.black };
+            }
+        }
+        const columns = column_clues.lines.len;
+        const column_hints = allocator.alloc([]Hint, columns) catch @panic("OOM");
+        var max_column_hints: usize = 0;
+        for (column_hints, column_clues.lines) |*column, line| {
+            column.* = allocator.alloc(Hint, line.counts.len) catch @panic("OOM");
+            max_column_hints = @max(max_column_hints, line.counts.len);
+            for (column.*, line.counts) |*hint, count| {
+                const color_name = count.color orelse puzzle.default_color;
+                const color = puzzle.colors.get(color_name) orelse pbn.Color.black;
+                hint.* = Hint{ .n = count.n, .color = Color.fromPbn(color) catch Color.black };
+            }
+        }
+        const background_color = Color.fromPbn(puzzle.colors.get(puzzle.background_color) orelse pbn.Color.white) catch Color.white;
+        const default_color = Color.fromPbn(puzzle.colors.get(puzzle.default_color) orelse pbn.Color.black) catch Color.black;
+        const tile_colors = allocator.alloc(?Color, rows * columns) catch @panic("OOM");
+        for (tile_colors) |*color| {
+            color.* = background_color;
+        }
+
+        self.private().state = .{
+            .tile_colors = tile_colors,
+            .background_color = background_color,
+            .default_color = default_color,
+            .selected_color = default_color,
+            .row_hints = row_hints,
+            .max_row_hints = max_row_hints,
+            .column_hints = column_hints,
+            .max_column_hints = max_column_hints,
+        };
+        self.queueDraw();
+    }
+
+    fn draw(_: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, user_data: ?*anyopaque) callconv(.C) void {
         const self = @ptrCast(*Self, @alignCast(@alignOf(*Self), user_data));
-        const state = self.private().state;
-        const dims = self.private().dimensions;
+        const state = self.private().state orelse return;
+        const dims = self.private().dimensions orelse blk: {
+            const computed = computeDimensions(state, width, height);
+            self.private().dimensions = computed;
+            break :blk computed;
+        };
 
         if (dims.tile_size <= 0) return;
 
@@ -203,11 +238,11 @@ pub const View = extern struct {
             }
         }
 
-        for (state.colors, 0..) |color, n| {
+        for (state.tile_colors, 0..) |color, n| {
             const i = state.max_column_hints + n / state.column_hints.len;
             const j = state.max_row_hints + n % state.column_hints.len;
             const pos = dims.tilePosition(i, j);
-            drawTile(cr, color, pos, dims);
+            drawTile(cr, color, pos, dims, state);
         }
     }
 
@@ -227,10 +262,21 @@ pub const View = extern struct {
         pangocairo.showLayout(cr, layout);
     }
 
-    fn drawTile(cr: *cairo.Context, color: Color, pos: Point, dims: Dimensions) void {
-        cr.setSourceRgb(color.r, color.g, color.b);
+    fn drawTile(cr: *cairo.Context, color: ?Color, pos: Point, dims: Dimensions, state: State) void {
+        const c = color orelse state.background_color;
+        cr.setSourceRgb(c.r, c.g, c.b);
         cr.rectangle(pos.x, pos.y, dims.tile_size, dims.tile_size);
         cr.fill();
+        if (color == null) {
+            cr.setSourceRgb(state.default_color.r, state.default_color.g, state.default_color.b);
+            cr.setLineWidth(Dimensions.gap_frac * dims.tile_size);
+            cr.moveTo(pos.x + dims.tile_size * 0.25, pos.y + dims.tile_size * 0.25);
+            cr.lineTo(pos.x + dims.tile_size * 0.75, pos.y + dims.tile_size * 0.75);
+            cr.stroke();
+            cr.moveTo(pos.x + dims.tile_size * 0.75, pos.y + dims.tile_size * 0.25);
+            cr.lineTo(pos.x + dims.tile_size * 0.25, pos.y + dims.tile_size * 0.75);
+            cr.stroke();
+        }
     }
 
     fn drawRules(cr: *cairo.Context, dims: Dimensions, state: State) void {
@@ -274,29 +320,41 @@ pub const View = extern struct {
 
     fn handleDragBegin(_: *gtk.GestureDrag, x: f64, y: f64, self: *Self) callconv(.C) void {
         self.private().draw_start = .{ .x = x, .y = y };
-        self.handleDraw(x, y);
+        self.handleDrag(x, y, true);
     }
 
     fn handleDragUpdate(_: *gtk.GestureDrag, x: f64, y: f64, self: *Self) callconv(.C) void {
         const draw_start = self.private().draw_start;
-        self.handleDraw(draw_start.x + x, draw_start.y + y);
+        self.handleDrag(draw_start.x + x, draw_start.y + y, true);
     }
 
-    fn handleDraw(self: *Self, x: f64, y: f64) void {
-        const state = self.private().state;
-        const dims = self.private().dimensions;
+    fn handleDragBeginSecondary(_: *gtk.GestureDrag, x: f64, y: f64, self: *Self) callconv(.C) void {
+        self.private().draw_start = .{ .x = x, .y = y };
+        self.handleDrag(x, y, false);
+    }
+
+    fn handleDragUpdateSecondary(_: *gtk.GestureDrag, x: f64, y: f64, self: *Self) callconv(.C) void {
+        const draw_start = self.private().draw_start;
+        self.handleDrag(draw_start.x + x, draw_start.y + y, false);
+    }
+
+    fn handleDrag(self: *Self, x: f64, y: f64, primary: bool) void {
+        const state = self.private().state orelse return;
+        const dims = self.private().dimensions orelse return;
         if (dims.positionTile(x, y)) |tile| {
-            if (state.colorIndex(tile.row, tile.column)) |n| {
-                state.colors[n] = state.selected_color;
+            if (state.tileIndex(tile.row, tile.column)) |n| {
+                state.tile_colors[n] = if (primary) state.selected_color else null;
                 self.private().drawing_area.queueDraw();
             }
         }
     }
 
-    fn handleResize(_: *gtk.DrawingArea, width_int: c_int, height_int: c_int, self: *Self) callconv(.C) void {
-        const state = self.private().state;
-        const dimensions = &self.private().dimensions;
+    fn handleResize(_: *gtk.DrawingArea, width: c_int, height: c_int, self: *Self) callconv(.C) void {
+        const state = self.private().state orelse return;
+        self.private().dimensions = computeDimensions(state, width, height);
+    }
 
+    fn computeDimensions(state: State, width_int: c_int, height_int: c_int) Dimensions {
         const width = @intToFloat(f64, width_int);
         const height = @intToFloat(f64, height_int);
         const rows = @intToFloat(f64, state.row_hints.len + state.max_column_hints);
@@ -304,13 +362,14 @@ pub const View = extern struct {
 
         const max_tile_height = height / (rows + Dimensions.gap_frac * rows + Dimensions.gap_frac);
         const max_tile_width = width / (columns + Dimensions.gap_frac * columns + Dimensions.gap_frac);
-        dimensions.*.tile_size = @min(max_tile_height, max_tile_width);
-        const board_height = rows * dimensions.tile_size + (rows + 1) * Dimensions.gap_frac * dimensions.tile_size;
-        const board_width = columns * dimensions.tile_size + (columns + 1) * Dimensions.gap_frac * dimensions.tile_size;
-        dimensions.*.board_pos = .{
-            .x = width / 2 - board_width / 2 + Dimensions.gap_frac * dimensions.tile_size,
-            .y = height / 2 - board_height / 2 + Dimensions.gap_frac * dimensions.tile_size,
+        const tile_size = @min(max_tile_height, max_tile_width);
+        const board_height = rows * tile_size + (rows + 1) * Dimensions.gap_frac * tile_size;
+        const board_width = columns * tile_size + (columns + 1) * Dimensions.gap_frac * tile_size;
+        const board_pos = Point{
+            .x = width / 2 - board_width / 2 + Dimensions.gap_frac * tile_size,
+            .y = height / 2 - board_height / 2 + Dimensions.gap_frac * tile_size,
         };
+        return .{ .tile_size = tile_size, .board_pos = board_pos };
     }
 
     pub usingnamespace Parent.Methods(Self);

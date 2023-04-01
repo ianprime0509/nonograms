@@ -3,8 +3,10 @@ const glib = @import("glib");
 const gobject = @import("gobject");
 const gio = @import("gio");
 const adw = @import("adw");
+const pbn = @import("pbn.zig");
 const view = @import("view.zig");
 const View = view.View;
+const c_allocator = std.heap.c_allocator;
 
 pub fn main() !void {
     _ = Application.getType();
@@ -58,6 +60,12 @@ const ApplicationWindow = extern struct {
     pub const Parent = adw.ApplicationWindow;
     const Self = @This();
 
+    pub const Private = struct {
+        view: *view.View,
+
+        pub var offset: c_int = 0;
+    };
+
     const template = @embedFile("ui/window.ui");
 
     pub const getType = gobject.registerType(ApplicationWindow, .{
@@ -70,6 +78,9 @@ const ApplicationWindow = extern struct {
 
     pub fn init(self: *Self, _: *Class) callconv(.C) void {
         self.initTemplate();
+        var puzzle_set = pbn.PuzzleSet.parseFile(c_allocator, "src/example.pbn") catch @panic("oh no");
+        defer puzzle_set.deinit();
+        self.private().view.load(puzzle_set.puzzles[0]);
     }
 
     pub usingnamespace Parent.Methods(Self);
@@ -81,6 +92,7 @@ const ApplicationWindow = extern struct {
 
         pub fn init(class: *Class) callconv(.C) void {
             class.setTemplate(glib.Bytes.newFromSlice(template));
+            class.bindTemplateChild("view", .{ .private = true });
         }
 
         pub usingnamespace Parent.Class.Methods(Class);

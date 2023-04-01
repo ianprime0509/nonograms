@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<!-- The example from https://webpbn.com/pbn_fmt.html -->
+<puzzleset>
+  <puzzle type="grid" defaultcolor="black">
+    <source>webpbn.com</source>
+    <id>#1</id>
+    <title>Sample Puzzle</title>
+    <author>Jan Wolter</author>
+    <authorid>jan</authorid>
+    <copyright>© 2004 by Jan Wolter</copyright>
+    <description>
+      A dancing stick figure man.
+    </description>
+
+    <color name="white" char=".">fff</color>
+    <color name="black" char="X">000</color>
+
+    <clues type="columns">
+      <line><count>2</count><count>1</count></line>
+      <line><count>2</count><count>1</count><count>3</count></line>
+      <line><count>7</count></line>
+      <line><count>1</count><count>3</count></line>
+      <line><count>2</count><count>1</count></line>
+    </clues>
+
+    <clues type="rows">
+      <line><count>2</count></line>
+      <line><count>2</count><count>1</count></line>
+      <line><count>1</count><count>1</count></line>
+      <line><count>3</count></line>
+      <line><count>1</count><count>1</count></line>
+      <line><count>1</count><count>1</count></line>
+      <line><count>2</count></line>
+      <line><count>1</count><count>1</count></line>
+      <line><count>1</count><count>2</count></line>
+      <line><count>2</count></line>
+    </clues>
+
+    <solution type="goal">
+      <image>
+        |.XX..|
+        |.XX.X|
+        |..X.X|
+        |.XXX.|
+        |X.X..|
+        |X.X..|
+        |..XX.|
+        |.X.X.|
+        |.X.XX|
+        |XX...|
+      </image>
+    </solution>
+  </puzzle>
+</puzzleset>
