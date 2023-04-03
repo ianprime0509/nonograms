@@ -82,7 +82,7 @@ const ApplicationWindow = extern struct {
 
     pub fn init(self: *Self, _: *Class) callconv(.C) void {
         self.initTemplate();
-        var puzzle_set = pbn.PuzzleSet.parseFile(c_allocator, "src/example.pbn") catch @panic("oh no");
+        var puzzle_set = pbn.PuzzleSet.parseFile(c_allocator, "9381.pbn") catch @panic("oh no");
         defer puzzle_set.deinit();
         self.private().view.load(puzzle_set.puzzles[0]);
     }
