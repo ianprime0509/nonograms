@@ -7,6 +7,7 @@ const cairo = @import("cairo");
 const pango = @import("pango");
 const pangocairo = @import("pangocairo");
 const pbn = @import("pbn.zig");
+const mem = std.mem;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const raw_c_allocator = std.heap.raw_c_allocator;
 
@@ -101,6 +102,7 @@ pub const View = extern struct {
 
     pub const Private = struct {
         drawing_area: *gtk.DrawingArea,
+        color_picker: *ColorPicker,
         draw_start: Point,
         dimensions: ?Dimensions,
         state: ?State,
@@ -146,6 +148,8 @@ pub const View = extern struct {
         drawing_area.addController(drag_secondary.as(gtk.EventController));
 
         self.private().state_arena = ArenaAllocator.init(raw_c_allocator);
+
+        _ = gobject.signalConnectData(self.private().color_picker, "color-selected", @ptrCast(gobject.Callback, &handleColorSelected), self, null, .{});
     }
 
     fn dispose(self: *Self) callconv(.C) void {
@@ -202,6 +206,8 @@ pub const View = extern struct {
             .max_column_hints = max_column_hints,
         };
         self.queueDraw();
+
+        self.private().color_picker.load(puzzle);
     }
 
     fn draw(_: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, user_data: ?*anyopaque) callconv(.C) void {
@@ -366,10 +372,18 @@ pub const View = extern struct {
         const board_height = rows * tile_size + (rows + 1) * Dimensions.gap_frac * tile_size;
         const board_width = columns * tile_size + (columns + 1) * Dimensions.gap_frac * tile_size;
         const board_pos = Point{
-            .x = width / 2 - board_width / 2 + Dimensions.gap_frac * tile_size,
-            .y = height / 2 - board_height / 2 + Dimensions.gap_frac * tile_size,
+            .x = width / 2 - board_width / 2,
+            .y = height / 2 - board_height / 2,
         };
         return .{ .tile_size = tile_size, .board_pos = board_pos };
+    }
+
+    fn handleColorSelected(_: *ColorPicker, color: *glib.Variant, self: *Self) callconv(.C) void {
+        const state = &(self.private().state orelse return);
+        const r = color.getChildValue(0).getDouble();
+        const g = color.getChildValue(1).getDouble();
+        const b = color.getChildValue(2).getDouble();
+        state.selected_color = .{ .r = r, .g = g, .b = b };
     }
 
     pub usingnamespace Parent.Methods(Self);
@@ -383,6 +397,161 @@ pub const View = extern struct {
 
         pub fn init(class: *Class) callconv(.C) void {
             class.implementDispose(&dispose);
+            class.setTemplateFromSlice(template);
+            class.bindTemplateChild("drawing_area", .{ .private = true });
+            class.bindTemplateChild("color_picker", .{ .private = true });
+        }
+
+        pub usingnamespace Parent.Class.Methods(Class);
+        pub usingnamespace Parent.Class.VirtualMethods(Class, Instance);
+    };
+};
+
+pub const ColorPicker = extern struct {
+    parent_instance: Parent,
+
+    pub const Parent = gtk.Widget;
+    const Self = @This();
+
+    pub const Private = struct {
+        box: *gtk.Box,
+        color: Color,
+
+        pub var offset: c_int = 0;
+    };
+
+    const template = @embedFile("ui/color-picker.ui");
+
+    pub const getType = gobject.registerType(Self, .{
+        .name = "NonogramsColorPicker",
+    });
+    var color_select: c_uint = 0;
+
+    pub fn new() *Self {
+        return Self.newWith(.{});
+    }
+
+    pub fn init(self: *Self, _: *Class) callconv(.C) void {
+        self.initTemplate();
+        self.setLayoutManager(gtk.BinLayout.new().as(gtk.LayoutManager));
+    }
+
+    fn dispose(self: *Self) callconv(.C) void {
+        while (self.getFirstChild()) |child| child.unparent();
+        Class.parent.?.callDispose(self.as(gobject.Object));
+    }
+
+    pub fn load(self: *Self, puzzle: pbn.Puzzle) void {
+        while (self.private().box.getFirstChild()) |child| child.unparent();
+
+        var last_button: ?*gtk.ToggleButton = null;
+        var colors = puzzle.colors.valueIterator();
+        while (colors.next()) |color| {
+            const button = ColorButton.new(Color.fromPbn(color.*) catch Color.black);
+            button.setGroup(last_button);
+            self.private().box.append(button.as(gtk.Widget));
+            last_button = button.as(gtk.ToggleButton);
+            if (mem.eql(u8, color.name, puzzle.default_color)) {
+                button.setActive(true);
+            }
+            _ = button.connectToggled(*Self, &handleButtonToggled, self, .{});
+        }
+    }
+
+    fn handleButtonToggled(button: *ColorButton, self: *Self) callconv(.C) void {
+        if (!button.getActive()) {
+            return;
+        }
+
+        const color = button.getSelectionColor();
+        const r = glib.Variant.newDouble(color.r);
+        const g = glib.Variant.newDouble(color.g);
+        const b = glib.Variant.newDouble(color.b);
+        const tuple_parts = [_]*glib.Variant{ r, g, b };
+        const v = glib.Variant.newTuple(&tuple_parts, 3);
+        var self_value = gobject.Value.wrap(self);
+        defer self_value.unset();
+        var v_value = gobject.Value.wrap(v);
+        defer v_value.unset();
+        const params = [_]gobject.Value{ self_value, v_value };
+        gobject.signalEmitv(&params, color_select, 0, null);
+    }
+
+    pub usingnamespace Parent.Methods(Self);
+
+    pub const Class = extern struct {
+        parent_class: Parent.Class,
+
+        pub var parent: ?*Parent.Class = null;
+
+        pub const Instance = Self;
+
+        pub fn init(class: *Class) callconv(.C) void {
+            class.implementDispose(&dispose);
+            class.setTemplateFromSlice(template);
+            class.bindTemplateChild("box", .{ .private = true });
+            var param_types = [_]gobject.Type{gobject.typeFor(*glib.Variant)};
+            color_select = gobject.signalNewv("color-selected", getType(), .{}, null, null, null, null, gobject.typeFor(void), 1, &param_types);
+        }
+
+        pub usingnamespace Parent.Class.Methods(Class);
+        pub usingnamespace Parent.Class.VirtualMethods(Class, Instance);
+    };
+};
+
+pub const ColorButton = extern struct {
+    parent_instance: Parent,
+
+    pub const Parent = gtk.ToggleButton;
+    const Self = @This();
+
+    pub const Private = struct {
+        toggle_button: *gtk.ToggleButton,
+        drawing_area: *gtk.DrawingArea,
+        color: Color,
+
+        pub var offset: c_int = 0;
+    };
+
+    const template = @embedFile("ui/color-button.ui");
+
+    pub const getType = gobject.registerType(Self, .{
+        .name = "NonogramsColorButton",
+    });
+
+    pub fn new(color: Color) *Self {
+        const self = Self.newWith(.{});
+        self.private().color = color;
+        return self;
+    }
+
+    pub fn init(self: *Self, _: *Class) callconv(.C) void {
+        self.initTemplate();
+        self.private().drawing_area.setDrawFunc(&draw, self, null);
+    }
+
+    pub fn getSelectionColor(self: *Self) Color {
+        return self.private().color;
+    }
+
+    fn draw(_: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, user_data: ?*anyopaque) callconv(.C) void {
+        const self = @ptrCast(*Self, @alignCast(@alignOf(*Self), user_data));
+        const color = self.private().color;
+        cr.setSourceRgb(color.r, color.g, color.b);
+        cr.rectangle(0, 0, @intToFloat(f64, width), @intToFloat(f64, height));
+        cr.fill();
+    }
+
+    pub usingnamespace Parent.Methods(Self);
+
+    pub const Class = extern struct {
+        parent_class: Parent.Class,
+
+        pub var parent: ?*Parent.Class = null;
+
+        pub const Instance = Self;
+
+        pub fn init(class: *Class) callconv(.C) void {
             class.setTemplateFromSlice(template);
             class.bindTemplateChild("drawing_area", .{ .private = true });
         }

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <template class="NonogramsColorButton" parent="GtkToggleButton">
+    <child>
+      <object class="GtkAspectFrame">
+        <property name="ratio">1</property>
+        <property name="width-request">30</property>
+        <property name="height-request">30</property>
+        <child>
+          <object class="GtkDrawingArea" id="drawing_area" />
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

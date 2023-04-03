@@ -5,12 +5,16 @@ const gio = @import("gio");
 const adw = @import("adw");
 const pbn = @import("pbn.zig");
 const view = @import("view.zig");
+const ColorButton = view.ColorButton;
+const ColorPicker = view.ColorPicker;
 const View = view.View;
 const c_allocator = std.heap.c_allocator;
 
 pub fn main() !void {
     _ = Application.getType();
     _ = ApplicationWindow.getType();
+    _ = ColorButton.getType();
+    _ = ColorPicker.getType();
     _ = View.getType();
     const status = Application.new().run(@intCast(c_int, std.os.argv.len), std.os.argv.ptr);
     std.os.exit(@intCast(u8, status));
@@ -61,7 +65,7 @@ const ApplicationWindow = extern struct {
     const Self = @This();
 
     pub const Private = struct {
-        view: *view.View,
+        view: *View,
 
         pub var offset: c_int = 0;
     };
