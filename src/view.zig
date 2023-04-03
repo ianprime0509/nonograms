@@ -445,9 +445,8 @@ pub const ColorPicker = extern struct {
         while (self.private().box.getFirstChild()) |child| child.unparent();
 
         var last_button: ?*gtk.ToggleButton = null;
-        var colors = puzzle.colors.valueIterator();
-        while (colors.next()) |color| {
-            const button = ColorButton.new(Color.fromPbn(color.*) catch Color.black);
+        for (puzzle.colors.values()) |color| {
+            const button = ColorButton.new(Color.fromPbn(color) catch Color.black);
             button.setGroup(last_button);
             self.private().box.append(button.as(gtk.Widget));
             last_button = button.as(gtk.ToggleButton);

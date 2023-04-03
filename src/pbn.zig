@@ -11,7 +11,7 @@ const Allocator = mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
 const EnumArray = std.EnumArray;
-const StringHashMap = std.StringHashMap;
+const StringArrayHashMap = std.StringArrayHashMap;
 
 pub const Error = error{InvalidPbn} || Allocator.Error;
 
@@ -93,7 +93,7 @@ pub const Puzzle = struct {
     author_id: ?[]const u8,
     copyright: ?[]const u8,
     description: ?[]const u8,
-    colors: StringHashMap(Color),
+    colors: StringArrayHashMap(Color),
     default_color: []const u8,
     background_color: []const u8,
     clues: EnumArray(Clues.Type, ?Clues),
@@ -107,7 +107,7 @@ pub const Puzzle = struct {
         var author_id: ?[]const u8 = null;
         var copyright: ?[]const u8 = null;
         var description: ?[]const u8 = null;
-        var colors = StringHashMap(Color).init(allocator);
+        var colors = StringArrayHashMap(Color).init(allocator);
         var default_color: ?[]const u8 = null;
         var background_color: ?[]const u8 = null;
         var clues = EnumArray(Clues.Type, ?Clues).initFill(null);
@@ -187,9 +187,9 @@ pub const Color = struct {
             };
         } else if (self.value.len == 6) {
             return .{
-                .r = fmt.parseInt(u8, self.value[0..1], 16) catch return error.InvalidColor,
-                .g = fmt.parseInt(u8, self.value[2..3], 16) catch return error.InvalidColor,
-                .b = fmt.parseInt(u8, self.value[4..5], 16) catch return error.InvalidColor,
+                .r = fmt.parseInt(u8, self.value[0..2], 16) catch return error.InvalidColor,
+                .g = fmt.parseInt(u8, self.value[2..4], 16) catch return error.InvalidColor,
+                .b = fmt.parseInt(u8, self.value[4..6], 16) catch return error.InvalidColor,
             };
         } else {
             return error.InvalidColor;
