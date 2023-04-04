@@ -2,6 +2,7 @@ const std = @import("std");
 const glib = @import("glib");
 const gobject = @import("gobject");
 const gio = @import("gio");
+const gtk = @import("gtk");
 const adw = @import("adw");
 const pbn = @import("pbn.zig");
 const view = @import("view.zig");
@@ -85,9 +86,26 @@ const ApplicationWindow = extern struct {
         var puzzle_set = pbn.PuzzleSet.parseFile(c_allocator, "9381.pbn") catch @panic("oh no");
         defer puzzle_set.deinit();
         self.private().view.load(puzzle_set.puzzles[0]);
+
+        const about = gio.SimpleAction.new("about", null);
+        _ = about.connectActivate(*Self, &handleAbout, self, .{});
+        self.addAction(about.as(gio.Action));
+    }
+
+    fn handleAbout(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
+        const about = adw.AboutWindow.new();
+        about.setApplicationName("Nonograms");
+        about.setDeveloperName("Ian Johnson");
+        about.setCopyright("© 2023 Ian Johnson");
+        about.setWebsite("https://github.com/ianprime0509/nonograms");
+        about.setIssueUrl("https://github.com/ianprime0509/nonograms/issues");
+        about.setLicenseType(gtk.License.mit_x11);
+        about.setTransientFor(self.as(gtk.Window));
+        about.present();
     }
 
     pub usingnamespace Parent.Methods(Self);
+    pub usingnamespace gio.ActionMap.Methods(Self);
 
     pub const Class = extern struct {
         parent_class: Parent.Class,
