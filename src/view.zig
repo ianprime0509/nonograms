@@ -40,6 +40,7 @@ const State = struct {
     max_row_hints: usize,
     column_hints: [][]Hint,
     max_column_hints: usize,
+    hover_tile: ?Cell,
 
     fn tileIndex(self: State, row: usize, column: usize) ?usize {
         const row_in_bounds = row >= self.max_column_hints and row < self.max_column_hints + self.row_hints.len;
@@ -147,6 +148,11 @@ pub const View = extern struct {
         _ = drag_secondary.connectDragUpdate(*Self, &handleDragUpdateSecondary, self, .{});
         drawing_area.addController(drag_secondary.as(gtk.EventController));
 
+        const motion = gtk.EventControllerMotion.new();
+        _ = motion.connectMotion(*Self, &handlePointerMotion, self, .{});
+        _ = motion.connectLeave(*Self, &handlePointerLeave, self, .{});
+        drawing_area.addController(motion.as(gtk.EventController));
+
         self.private().state_arena = ArenaAllocator.init(raw_c_allocator);
 
         _ = gobject.signalConnectData(self.private().color_picker, "color-selected", @ptrCast(gobject.Callback, &handleColorSelected), self, null, .{});
@@ -204,6 +210,7 @@ pub const View = extern struct {
             .max_row_hints = max_row_hints,
             .column_hints = column_hints,
             .max_column_hints = max_column_hints,
+            .hover_tile = null,
         };
         self.private().dimensions = null;
         self.private().drawing_area.queueDraw();
@@ -224,6 +231,15 @@ pub const View = extern struct {
 
         drawRules(cr, dims, state);
 
+        for (state.tile_colors, 0..) |color, n| {
+            const i = state.max_column_hints + n / state.column_hints.len;
+            const j = state.max_row_hints + n % state.column_hints.len;
+            const pos = dims.tilePosition(i, j);
+            drawTile(cr, color, pos, dims, state);
+        }
+
+        drawHover(cr, dims, state);
+
         const layout = pangocairo.createLayout(cr);
         defer layout.unref();
         const pango_scale = @intToFloat(f64, pango.SCALE);
@@ -243,13 +259,6 @@ pub const View = extern struct {
                 const pos = dims.tilePosition(state.max_column_hints - column.len + n, state.max_row_hints + j);
                 drawHint(cr, layout, hint, pos, dims);
             }
-        }
-
-        for (state.tile_colors, 0..) |color, n| {
-            const i = state.max_column_hints + n / state.column_hints.len;
-            const j = state.max_row_hints + n % state.column_hints.len;
-            const pos = dims.tilePosition(i, j);
-            drawTile(cr, color, pos, dims, state);
         }
     }
 
@@ -325,6 +334,25 @@ pub const View = extern struct {
         cr.stroke();
     }
 
+    fn drawHover(cr: *cairo.Context, dims: Dimensions, state: State) void {
+        const hover_tile = state.hover_tile orelse return;
+        cr.setSourceRgba(0, 0, 0, 0.1);
+
+        if (hover_tile.row >= state.max_column_hints and hover_tile.row < state.max_column_hints + state.row_hints.len) {
+            var row_start = dims.tilePosition(hover_tile.row, 0);
+            var row_end = dims.tilePosition(hover_tile.row, state.max_row_hints + state.column_hints.len);
+            cr.rectangle(row_start.x, row_start.y, row_end.x - row_start.x, dims.tile_size);
+            cr.fill();
+        }
+
+        if (hover_tile.column >= state.max_row_hints and hover_tile.column < state.max_row_hints + state.column_hints.len) {
+            var col_start = dims.tilePosition(0, hover_tile.column);
+            var col_end = dims.tilePosition(state.max_column_hints + state.row_hints.len, hover_tile.column);
+            cr.rectangle(col_start.x, col_start.y, dims.tile_size, col_end.y - col_start.y);
+            cr.fill();
+        }
+    }
+
     fn handleDragBegin(_: *gtk.GestureDrag, x: f64, y: f64, self: *Self) callconv(.C) void {
         self.private().draw_start = .{ .x = x, .y = y };
         self.handleDrag(x, y, true);
@@ -348,17 +376,29 @@ pub const View = extern struct {
     fn handleDrag(self: *Self, x: f64, y: f64, primary: bool) void {
         const state = self.private().state orelse return;
         const dims = self.private().dimensions orelse return;
-        if (dims.positionTile(x, y)) |tile| {
-            if (state.tileIndex(tile.row, tile.column)) |n| {
-                state.tile_colors[n] = if (primary) state.selected_color else null;
-                self.private().drawing_area.queueDraw();
-            }
+        const tile = dims.positionTile(x, y) orelse return;
+        if (state.tileIndex(tile.row, tile.column)) |n| {
+            state.tile_colors[n] = if (primary) state.selected_color else null;
+            self.private().drawing_area.queueDraw();
         }
     }
 
     fn handleResize(_: *gtk.DrawingArea, width: c_int, height: c_int, self: *Self) callconv(.C) void {
         const state = self.private().state orelse return;
         self.private().dimensions = computeDimensions(state, width, height);
+    }
+
+    fn handlePointerMotion(_: *gtk.EventControllerMotion, x: f64, y: f64, self: *Self) callconv(.C) void {
+        const state = &(self.private().state orelse return);
+        const dims = self.private().dimensions orelse return;
+        state.hover_tile = dims.positionTile(x, y);
+        self.private().drawing_area.queueDraw();
+    }
+
+    fn handlePointerLeave(_: *gtk.EventControllerMotion, self: *Self) callconv(.C) void {
+        const state = &(self.private().state orelse return);
+        state.hover_tile = null;
+        self.private().drawing_area.queueDraw();
     }
 
     fn computeDimensions(state: State, width_int: c_int, height_int: c_int) Dimensions {
