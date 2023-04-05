@@ -205,7 +205,8 @@ pub const View = extern struct {
             .column_hints = column_hints,
             .max_column_hints = max_column_hints,
         };
-        self.queueDraw();
+        self.private().dimensions = null;
+        self.private().drawing_area.queueDraw();
 
         self.private().color_picker.load(puzzle);
     }

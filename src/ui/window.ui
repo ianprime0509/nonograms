@@ -37,6 +37,12 @@
   <menu id="main_menu">
     <section>
       <item>
+        <attribute name="label">Open</attribute>
+        <attribute name="action">win.open</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
         <attribute name="label">About</attribute>
         <attribute name="action">win.about</attribute>
       </item>

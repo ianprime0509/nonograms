@@ -26,6 +26,12 @@ pub const PuzzleSet = struct {
     description: ?[]const u8,
     arena: ArenaAllocator,
 
+    pub fn parseBytes(allocator: Allocator, bytes: []const u8, url: [:0]const u8) Error!PuzzleSet {
+        const doc = xml.parseBytes(bytes, url) catch return error.InvalidPbn;
+        defer c.xmlFreeDoc(doc);
+        return try parseDoc(allocator, doc);
+    }
+
     pub fn parseFile(allocator: Allocator, file: [:0]const u8) Error!PuzzleSet {
         const doc = xml.parseFile(file) catch return error.InvalidPbn;
         defer c.xmlFreeDoc(doc);

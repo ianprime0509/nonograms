@@ -10,6 +10,7 @@ const ColorButton = view.ColorButton;
 const ColorPicker = view.ColorPicker;
 const View = view.View;
 const c_allocator = std.heap.c_allocator;
+const mem = std.mem;
 
 pub fn main() !void {
     _ = Application.getType();
@@ -88,11 +89,14 @@ const ApplicationWindow = extern struct {
         self.private().view.load(puzzle_set.puzzles[0]);
 
         const about = gio.SimpleAction.new("about", null);
-        _ = about.connectActivate(*Self, &handleAbout, self, .{});
+        _ = about.connectActivate(*Self, &handleAboutAction, self, .{});
         self.addAction(about.as(gio.Action));
+        const open = gio.SimpleAction.new("open", null);
+        _ = open.connectActivate(*Self, &handleOpenAction, self, .{});
+        self.addAction(open.as(gio.Action));
     }
 
-    fn handleAbout(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
+    fn handleAboutAction(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
         const about = adw.AboutWindow.new();
         about.setApplicationName("Nonograms");
         about.setDeveloperName("Ian Johnson");
@@ -102,6 +106,32 @@ const ApplicationWindow = extern struct {
         about.setLicenseType(gtk.License.mit_x11);
         about.setTransientFor(self.as(gtk.Window));
         about.present();
+    }
+
+    fn handleOpenAction(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
+        const chooser = gtk.FileChooserNative.new("Open Puzzle", self.as(gtk.Window), .open, "_Open", "_Cancel");
+        const filter = gtk.FileFilter.new();
+        filter.setName("PBN XML");
+        filter.addPattern("*.pbn");
+        filter.addPattern("*.xml");
+        chooser.addFilter(filter);
+        _ = chooser.connectResponse(*Self, &handleOpenResponse, self, .{});
+        chooser.show();
+    }
+
+    fn handleOpenResponse(chooser: *gtk.FileChooserNative, _: gtk.ResponseType, self: *Self) callconv(.C) void {
+        defer chooser.unref();
+        const file = chooser.getFile() orelse return;
+        defer file.unref();
+        const contents = file.loadBytes(null, null, null) orelse return;
+        defer contents.unref();
+        const url = file.getUri();
+        defer glib.free(url);
+        var size: usize = undefined;
+        const bytes = contents.getData(&size);
+        var puzzle_set = pbn.PuzzleSet.parseBytes(c_allocator, bytes[0..size], mem.sliceTo(url, 0)) catch @panic("TODO show error");
+        defer puzzle_set.deinit();
+        self.private().view.load(puzzle_set.puzzles[0]);
     }
 
     pub usingnamespace Parent.Methods(Self);
