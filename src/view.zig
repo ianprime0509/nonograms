@@ -419,12 +419,16 @@ pub const View = extern struct {
         return .{ .tile_size = tile_size, .board_pos = board_pos };
     }
 
-    fn handleColorSelected(_: *ColorPicker, color: *glib.Variant, self: *Self) callconv(.C) void {
+    fn handleColorSelected(_: *ColorPicker, maybe_color: *glib.Variant, self: *Self) callconv(.C) void {
         const state = &(self.private().state orelse return);
-        const r = color.getChildValue(0).getDouble();
-        const g = color.getChildValue(1).getDouble();
-        const b = color.getChildValue(2).getDouble();
-        state.selected_color = .{ .r = r, .g = g, .b = b };
+        if (maybe_color.getMaybe()) |color| {
+            const r = color.getChildValue(0).getDouble();
+            const g = color.getChildValue(1).getDouble();
+            const b = color.getChildValue(2).getDouble();
+            state.selected_color = .{ .r = r, .g = g, .b = b };
+        } else {
+            state.selected_color = null;
+        }
     }
 
     pub usingnamespace Parent.Methods(Self);
@@ -485,9 +489,16 @@ pub const ColorPicker = extern struct {
     pub fn load(self: *Self, puzzle: pbn.Puzzle) void {
         while (self.private().box.getFirstChild()) |child| child.unparent();
 
-        var last_button: ?*gtk.ToggleButton = null;
+        const none_button = ColorButton.new(
+            Color.fromPbn(puzzle.colors.get(puzzle.background_color) orelse pbn.Color.white) catch Color.white,
+            Color.fromPbn(puzzle.colors.get(puzzle.default_color) orelse pbn.Color.black) catch Color.black,
+        );
+        self.private().box.append(none_button.as(gtk.Widget));
+        _ = none_button.connectToggled(*Self, &handleButtonToggled, self, .{});
+
+        var last_button: *gtk.ToggleButton = none_button.as(gtk.ToggleButton);
         for (puzzle.colors.values()) |color| {
-            const button = ColorButton.new(Color.fromPbn(color) catch Color.black);
+            const button = ColorButton.new(Color.fromPbn(color) catch Color.black, null);
             button.setGroup(last_button);
             self.private().box.append(button.as(gtk.Widget));
             last_button = button.as(gtk.ToggleButton);
@@ -503,12 +514,20 @@ pub const ColorPicker = extern struct {
             return;
         }
 
-        const color = button.getSelectionColor();
-        const r = glib.Variant.newDouble(color.r);
-        const g = glib.Variant.newDouble(color.g);
-        const b = glib.Variant.newDouble(color.b);
-        const tuple_parts = [_]*glib.Variant{ r, g, b };
-        const v = glib.Variant.newTuple(&tuple_parts, 3);
+        const v_type = glib.VariantType.new("(ddd)");
+        defer v_type.free();
+        const v = blk: {
+            if (button.getSelectionColor()) |color| {
+                const r = glib.Variant.newDouble(color.r);
+                const g = glib.Variant.newDouble(color.g);
+                const b = glib.Variant.newDouble(color.b);
+                const tuple_parts = [_]*glib.Variant{ r, g, b };
+                break :blk glib.Variant.newMaybe(v_type, glib.Variant.newTuple(&tuple_parts, 3));
+            } else {
+                break :blk glib.Variant.newMaybe(v_type, null);
+            }
+        };
+
         var self_value = gobject.Value.wrap(self);
         defer self_value.unset();
         var v_value = gobject.Value.wrap(v);
@@ -549,6 +568,7 @@ pub const ColorButton = extern struct {
         toggle_button: *gtk.ToggleButton,
         drawing_area: *gtk.DrawingArea,
         color: Color,
+        x_color: ?Color,
 
         pub var offset: c_int = 0;
     };
@@ -559,9 +579,10 @@ pub const ColorButton = extern struct {
         .name = "NonogramsColorButton",
     });
 
-    pub fn new(color: Color) *Self {
+    pub fn new(color: Color, x_color: ?Color) *Self {
         const self = Self.newWith(.{});
         self.private().color = color;
+        self.private().x_color = x_color;
         return self;
     }
 
@@ -570,16 +591,28 @@ pub const ColorButton = extern struct {
         self.private().drawing_area.setDrawFunc(&draw, self, null);
     }
 
-    pub fn getSelectionColor(self: *Self) Color {
-        return self.private().color;
+    pub fn getSelectionColor(self: *Self) ?Color {
+        return if (self.private().x_color == null) self.private().color else null;
     }
 
     fn draw(_: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, user_data: ?*anyopaque) callconv(.C) void {
         const self = @ptrCast(*Self, @alignCast(@alignOf(*Self), user_data));
+        const w = @intToFloat(f64, width);
+        const h = @intToFloat(f64, height);
         const color = self.private().color;
         cr.setSourceRgb(color.r, color.g, color.b);
-        cr.rectangle(0, 0, @intToFloat(f64, width), @intToFloat(f64, height));
+        cr.rectangle(0, 0, w, h);
         cr.fill();
+        if (self.private().x_color) |x_color| {
+            cr.setSourceRgb(x_color.r, x_color.g, x_color.b);
+            cr.setLineWidth(Dimensions.gap_frac * w);
+            cr.moveTo(w * 0.25, h * 0.25);
+            cr.lineTo(w * 0.75, h * 0.75);
+            cr.stroke();
+            cr.moveTo(w * 0.75, h * 0.25);
+            cr.lineTo(w * 0.25, h * 0.75);
+            cr.stroke();
+        }
     }
 
     pub usingnamespace Parent.Methods(Self);
