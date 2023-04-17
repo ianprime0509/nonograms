@@ -29,9 +29,9 @@ pub fn build(b: *std.Build) !void {
     exe.addModule("pango", bindings.module("pango-1.0"));
     exe.addModule("pangocairo", bindings.module("pangocairo-1.0"));
     exe.addModule("adw", bindings.module("adw-1"));
-    exe.install();
+    b.installArtifact(exe);
 
-    const run_cmd = exe.run();
+    const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         run_cmd.addArgs(args);
