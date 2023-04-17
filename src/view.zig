@@ -514,23 +514,11 @@ pub const ColorPicker = extern struct {
             return;
         }
 
-        const v_type = glib.VariantType.new("(ddd)");
-        defer v_type.free();
-        const v = blk: {
-            if (button.getSelectionColor()) |color| {
-                const r = glib.Variant.newDouble(color.r);
-                const g = glib.Variant.newDouble(color.g);
-                const b = glib.Variant.newDouble(color.b);
-                const tuple_parts = [_]*glib.Variant{ r, g, b };
-                break :blk glib.Variant.newMaybe(v_type, glib.Variant.newTuple(&tuple_parts, 3));
-            } else {
-                break :blk glib.Variant.newMaybe(v_type, null);
-            }
-        };
-
-        var self_value = gobject.Value.wrap(self);
+        const ColorTuple = struct { f64, f64, f64 };
+        const color: ?ColorTuple = if (button.getSelectionColor()) |color| .{ color.r, color.g, color.b } else null;
+        var self_value = gobject.Value.newFrom(self);
         defer self_value.unset();
-        var v_value = gobject.Value.wrap(v);
+        var v_value = gobject.Value.newFrom(glib.Variant.newFrom(color));
         defer v_value.unset();
         const params = [_]gobject.Value{ self_value, v_value };
         gobject.signalEmitv(&params, color_select, 0, null);
