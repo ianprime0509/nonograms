@@ -159,11 +159,8 @@ pub const View = extern struct {
         drawing_area.addController(motion.as(gtk.EventController));
 
         const key = gtk.EventControllerKey.new();
-        // https://github.com/ianprime0509/zig-gobject/issues/4
-        // _ = key.connectKeyPressed(*Self, &handleKeyPressed, self, .{});
-        // _ = key.connectKeyReleased(*Self, &handleKeyReleased, self, .{});
-        _ = gobject.signalConnectData(key, "key-pressed", @ptrCast(gobject.Callback, &handleKeyPressed), self, null, .{});
-        _ = gobject.signalConnectData(key, "key-released", @ptrCast(gobject.Callback, &handleKeyReleased), self, null, .{});
+        _ = key.connectKeyPressed(*Self, &handleKeyPressed, self, .{});
+        _ = key.connectKeyReleased(*Self, &handleKeyReleased, self, .{});
         self.addController(key.as(gtk.EventController));
 
         self.private().state_arena = ArenaAllocator.init(raw_c_allocator);
@@ -483,7 +480,7 @@ pub const View = extern struct {
         return true;
     }
 
-    fn handleKeyReleased(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, self: *Self) callconv(.C) bool {
+    fn handleKeyReleased(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, self: *Self) callconv(.C) void {
         switch (keyval) {
             gdk.KEY_1,
             gdk.KEY_2,
@@ -496,9 +493,8 @@ pub const View = extern struct {
             gdk.KEY_9,
             gdk.KEY_0,
             => self.handleColorKeyReleased(),
-            else => return false,
+            else => {},
         }
-        return true;
     }
 
     fn handleColorKeyPressed(self: *Self, n: usize) void {
