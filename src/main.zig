@@ -11,6 +11,7 @@ const ColorPicker = view.ColorPicker;
 const View = view.View;
 const c_allocator = std.heap.c_allocator;
 const mem = std.mem;
+const panic = std.debug.panic;
 
 pub fn main() !void {
     _ = Application.getType();
@@ -64,6 +65,7 @@ const ApplicationWindow = extern struct {
     parent_instance: Parent,
 
     pub const Parent = adw.ApplicationWindow;
+    pub const Implements = Parent.Implements;
     const Self = @This();
 
     pub const Private = struct {
@@ -84,7 +86,7 @@ const ApplicationWindow = extern struct {
 
     pub fn init(self: *Self, _: *Class) callconv(.C) void {
         self.initTemplate();
-        var puzzle_set = pbn.PuzzleSet.parseFile(c_allocator, "9381.pbn") catch @panic("oh no");
+        var puzzle_set = pbn.PuzzleSet.parseFile(c_allocator, "9381.pbn") catch panic("oh no", .{});
         defer puzzle_set.deinit();
         self.private().view.load(puzzle_set.puzzles[0]);
 
@@ -94,6 +96,10 @@ const ApplicationWindow = extern struct {
         const open = gio.SimpleAction.new("open", null);
         _ = open.connectActivate(*Self, &handleOpenAction, self, .{});
         self.addAction(open.as(gio.Action));
+
+        // The function setFocus by itself is ambiguous because it could be
+        // either gtk_window_set_focus or gtk_root_set_focus
+        self.as(gtk.Root).setFocus(self.private().view.private().drawing_area.as(gtk.Widget));
     }
 
     fn handleAboutAction(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
@@ -129,7 +135,7 @@ const ApplicationWindow = extern struct {
         defer glib.free(url);
         var size: usize = undefined;
         const bytes = contents.getData(&size);
-        var puzzle_set = pbn.PuzzleSet.parseBytes(c_allocator, bytes[0..size], mem.sliceTo(url, 0)) catch @panic("TODO show error");
+        var puzzle_set = pbn.PuzzleSet.parseBytes(c_allocator, bytes[0..size], mem.sliceTo(url, 0)) catch panic("TODO show error", .{});
         defer puzzle_set.deinit();
         self.private().view.load(puzzle_set.puzzles[0]);
     }

@@ -7,8 +7,11 @@ const cairo = @import("cairo");
 const pango = @import("pango");
 const pangocairo = @import("pangocairo");
 const pbn = @import("pbn.zig");
+const util = @import("util.zig");
 const mem = std.mem;
 const ArenaAllocator = std.heap.ArenaAllocator;
+const math = std.math;
+const oom = util.oom;
 const raw_c_allocator = std.heap.raw_c_allocator;
 
 const Color = struct {
@@ -163,8 +166,6 @@ pub const View = extern struct {
         _ = gobject.signalConnectData(key, "key-released", @ptrCast(gobject.Callback, &handleKeyReleased), self, null, .{});
         drawing_area.addController(key.as(gtk.EventController));
 
-        _ = drawing_area.grabFocus();
-
         self.private().state_arena = ArenaAllocator.init(raw_c_allocator);
 
         _ = gobject.signalConnectData(self.private().color_picker, "color-selected", @ptrCast(gobject.Callback, &handleColorSelected), self, null, .{});
@@ -183,10 +184,10 @@ pub const View = extern struct {
         const row_clues = puzzle.clues.get(.rows) orelse return;
         const column_clues = puzzle.clues.get(.columns) orelse return;
         const rows = row_clues.lines.len;
-        const row_hints = allocator.alloc([]Hint, rows) catch @panic("OOM");
+        const row_hints = allocator.alloc([]Hint, rows) catch oom();
         var max_row_hints: usize = 0;
         for (row_hints, row_clues.lines) |*row, line| {
-            row.* = allocator.alloc(Hint, line.counts.len) catch @panic("OOM");
+            row.* = allocator.alloc(Hint, line.counts.len) catch oom();
             max_row_hints = @max(max_row_hints, line.counts.len);
             for (row.*, line.counts) |*hint, count| {
                 const color_name = count.color orelse puzzle.default_color;
@@ -195,10 +196,10 @@ pub const View = extern struct {
             }
         }
         const columns = column_clues.lines.len;
-        const column_hints = allocator.alloc([]Hint, columns) catch @panic("OOM");
+        const column_hints = allocator.alloc([]Hint, columns) catch oom();
         var max_column_hints: usize = 0;
         for (column_hints, column_clues.lines) |*column, line| {
-            column.* = allocator.alloc(Hint, line.counts.len) catch @panic("OOM");
+            column.* = allocator.alloc(Hint, line.counts.len) catch oom();
             max_column_hints = @max(max_column_hints, line.counts.len);
             for (column.*, line.counts) |*hint, count| {
                 const color_name = count.color orelse puzzle.default_color;
@@ -208,11 +209,11 @@ pub const View = extern struct {
         }
         const background_color = Color.fromPbn(puzzle.colors.get(puzzle.background_color) orelse pbn.Color.white) catch Color.white;
         const default_color = Color.fromPbn(puzzle.colors.get(puzzle.default_color) orelse pbn.Color.black) catch Color.black;
-        const available_colors = allocator.alloc(Color, puzzle.colors.count()) catch @panic("OOM");
+        const available_colors = allocator.alloc(Color, puzzle.colors.count()) catch oom();
         for (available_colors, puzzle.colors.values()) |*available_color, color| {
             available_color.* = Color.fromPbn(color) catch Color.black;
         }
-        const tile_colors = allocator.alloc(?Color, rows * columns) catch @panic("OOM");
+        const tile_colors = allocator.alloc(?Color, rows * columns) catch oom();
         for (tile_colors) |*color| {
             color.* = background_color;
         }
@@ -283,7 +284,7 @@ pub const View = extern struct {
     fn drawHint(cr: *cairo.Context, layout: *pango.Layout, hint: Hint, pos: Point, dims: Dimensions) void {
         var buf: [32]u8 = undefined;
         cr.setSourceRgb(hint.color.r, hint.color.g, hint.color.b);
-        const text = std.fmt.bufPrintZ(&buf, "{}", .{hint.n}) catch @panic("format");
+        const text = std.fmt.bufPrintZ(&buf, "{}", .{hint.n}) catch unreachable;
         layout.setText(text, -1);
         var w: c_int = undefined;
         var h: c_int = undefined;
@@ -410,6 +411,7 @@ pub const View = extern struct {
         const state = &(self.private().state orelse return);
         const dims = self.private().dimensions orelse return;
         state.hover_tile = dims.positionTile(x, y);
+        self.handleColorKeyDraw();
         self.private().drawing_area.queueDraw();
     }
 
