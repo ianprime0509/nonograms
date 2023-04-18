@@ -11,7 +11,6 @@ const ColorPicker = view.ColorPicker;
 const View = view.View;
 const c_allocator = std.heap.c_allocator;
 const mem = std.mem;
-const panic = std.debug.panic;
 
 pub fn main() !void {
     _ = Application.getType();
@@ -70,6 +69,7 @@ const ApplicationWindow = extern struct {
 
     pub const Private = struct {
         view: *View,
+        toast_overlay: *adw.ToastOverlay,
 
         pub var offset: c_int = 0;
     };
@@ -86,9 +86,6 @@ const ApplicationWindow = extern struct {
 
     pub fn init(self: *Self, _: *Class) callconv(.C) void {
         self.initTemplate();
-        var puzzle_set = pbn.PuzzleSet.parseFile(c_allocator, "9381.pbn") catch panic("oh no", .{});
-        defer puzzle_set.deinit();
-        self.private().view.load(puzzle_set.puzzles[0]);
 
         const about = gio.SimpleAction.new("about", null);
         _ = about.connectActivate(*Self, &handleAboutAction, self, .{});
@@ -100,6 +97,30 @@ const ApplicationWindow = extern struct {
         // The function setFocus by itself is ambiguous because it could be
         // either gtk_window_set_focus or gtk_root_set_focus
         self.as(gtk.Root).setFocus(self.private().view.private().drawing_area.as(gtk.Widget));
+
+        // Load an initial puzzle
+        const file = gio.File.newForPath("9381.pbn");
+        defer file.unref();
+        self.openFile(file);
+    }
+
+    fn openFile(self: *Self, file: *gio.File) void {
+        const contents = file.loadBytes(null, null, null) orelse return;
+        defer contents.unref();
+        const url = file.getUri();
+        defer glib.free(url);
+        var size: usize = undefined;
+        const bytes = contents.getData(&size);
+        var puzzle_set = pbn.PuzzleSet.parseBytes(c_allocator, bytes[0..size], mem.sliceTo(url, 0)) catch {
+            self.private().toast_overlay.addToast(adw.Toast.new("Failed to load puzzle"));
+            return;
+        };
+        defer puzzle_set.deinit();
+        if (puzzle_set.puzzles.len == 0) {
+            self.private().toast_overlay.addToast(adw.Toast.new("No puzzles in file"));
+            return;
+        }
+        self.private().view.load(puzzle_set.puzzles[0]);
     }
 
     fn handleAboutAction(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
@@ -129,15 +150,7 @@ const ApplicationWindow = extern struct {
         defer chooser.unref();
         const file = chooser.getFile() orelse return;
         defer file.unref();
-        const contents = file.loadBytes(null, null, null) orelse return;
-        defer contents.unref();
-        const url = file.getUri();
-        defer glib.free(url);
-        var size: usize = undefined;
-        const bytes = contents.getData(&size);
-        var puzzle_set = pbn.PuzzleSet.parseBytes(c_allocator, bytes[0..size], mem.sliceTo(url, 0)) catch panic("TODO show error", .{});
-        defer puzzle_set.deinit();
-        self.private().view.load(puzzle_set.puzzles[0]);
+        self.openFile(file);
     }
 
     pub usingnamespace Parent.Methods(Self);
@@ -151,6 +164,7 @@ const ApplicationWindow = extern struct {
         pub fn init(class: *Class) callconv(.C) void {
             class.setTemplate(glib.Bytes.newFromSlice(template));
             class.bindTemplateChild("view", .{ .private = true });
+            class.bindTemplateChild("toast_overlay", .{ .private = true });
         }
 
         pub usingnamespace Parent.Class.Methods(Class);

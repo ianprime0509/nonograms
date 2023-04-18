@@ -22,13 +22,17 @@
           </object>
         </child>
         <child>
-          <object class="NonogramsView" id="view">
-            <property name="hexpand">1</property>
-            <property name="vexpand">1</property>
-            <property name="margin-top">5</property>
-            <property name="margin-bottom">5</property>
-            <property name="margin-start">5</property>
-            <property name="margin-end">5</property>
+          <object class="AdwToastOverlay" id="toast_overlay">
+            <child>
+              <object class="NonogramsView" id="view">
+                <property name="hexpand">1</property>
+                <property name="vexpand">1</property>
+                <property name="margin-top">5</property>
+                <property name="margin-bottom">5</property>
+                <property name="margin-start">5</property>
+                <property name="margin-end">5</property>
+              </object>
+            </child>
           </object>
         </child>
       </object>
