@@ -164,7 +164,7 @@ pub const View = extern struct {
         // _ = key.connectKeyReleased(*Self, &handleKeyReleased, self, .{});
         _ = gobject.signalConnectData(key, "key-pressed", @ptrCast(gobject.Callback, &handleKeyPressed), self, null, .{});
         _ = gobject.signalConnectData(key, "key-released", @ptrCast(gobject.Callback, &handleKeyReleased), self, null, .{});
-        drawing_area.addController(key.as(gtk.EventController));
+        self.addController(key.as(gtk.EventController));
 
         self.private().state_arena = ArenaAllocator.init(raw_c_allocator);
 
