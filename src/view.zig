@@ -35,12 +35,14 @@ const State = struct {
     tile_colors: []?Color,
     background_color: Color,
     default_color: Color,
+    available_colors: []const Color,
     selected_color: ?Color,
     row_hints: [][]Hint,
     max_row_hints: usize,
     column_hints: [][]Hint,
     max_column_hints: usize,
     hover_tile: ?Cell,
+    holding_color_key: ?usize,
 
     fn tileIndex(self: State, row: usize, column: usize) ?usize {
         const row_in_bounds = row >= self.max_column_hints and row < self.max_column_hints + self.row_hints.len;
@@ -153,6 +155,16 @@ pub const View = extern struct {
         _ = motion.connectLeave(*Self, &handlePointerLeave, self, .{});
         drawing_area.addController(motion.as(gtk.EventController));
 
+        const key = gtk.EventControllerKey.new();
+        // https://github.com/ianprime0509/zig-gobject/issues/4
+        // _ = key.connectKeyPressed(*Self, &handleKeyPressed, self, .{});
+        // _ = key.connectKeyReleased(*Self, &handleKeyReleased, self, .{});
+        _ = gobject.signalConnectData(key, "key-pressed", @ptrCast(gobject.Callback, &handleKeyPressed), self, null, .{});
+        _ = gobject.signalConnectData(key, "key-released", @ptrCast(gobject.Callback, &handleKeyReleased), self, null, .{});
+        drawing_area.addController(key.as(gtk.EventController));
+
+        _ = drawing_area.grabFocus();
+
         self.private().state_arena = ArenaAllocator.init(raw_c_allocator);
 
         _ = gobject.signalConnectData(self.private().color_picker, "color-selected", @ptrCast(gobject.Callback, &handleColorSelected), self, null, .{});
@@ -196,6 +208,10 @@ pub const View = extern struct {
         }
         const background_color = Color.fromPbn(puzzle.colors.get(puzzle.background_color) orelse pbn.Color.white) catch Color.white;
         const default_color = Color.fromPbn(puzzle.colors.get(puzzle.default_color) orelse pbn.Color.black) catch Color.black;
+        const available_colors = allocator.alloc(Color, puzzle.colors.count()) catch @panic("OOM");
+        for (available_colors, puzzle.colors.values()) |*available_color, color| {
+            available_color.* = Color.fromPbn(color) catch Color.black;
+        }
         const tile_colors = allocator.alloc(?Color, rows * columns) catch @panic("OOM");
         for (tile_colors) |*color| {
             color.* = background_color;
@@ -206,11 +222,13 @@ pub const View = extern struct {
             .background_color = background_color,
             .default_color = default_color,
             .selected_color = default_color,
+            .available_colors = available_colors,
             .row_hints = row_hints,
             .max_row_hints = max_row_hints,
             .column_hints = column_hints,
             .max_column_hints = max_column_hints,
             .hover_tile = null,
+            .holding_color_key = null,
         };
         self.private().dimensions = null;
         self.private().drawing_area.queueDraw();
@@ -398,6 +416,106 @@ pub const View = extern struct {
     fn handlePointerLeave(_: *gtk.EventControllerMotion, self: *Self) callconv(.C) void {
         const state = &(self.private().state orelse return);
         state.hover_tile = null;
+        self.private().drawing_area.queueDraw();
+    }
+
+    fn handleKeyPressed(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, self: *Self) callconv(.C) bool {
+        const state = &(self.private().state orelse return false);
+        switch (keyval) {
+            gdk.KEY_Up => {
+                if (state.hover_tile) |*hover_tile| {
+                    if (hover_tile.row > state.max_column_hints) {
+                        hover_tile.row -= 1;
+                    }
+                } else {
+                    state.hover_tile = .{ .row = state.max_column_hints, .column = state.max_row_hints };
+                }
+                self.handleColorKeyDraw();
+                self.private().drawing_area.queueDraw();
+            },
+            gdk.KEY_Down => {
+                if (state.hover_tile) |*hover_tile| {
+                    if (hover_tile.row < state.max_column_hints + state.row_hints.len - 1) {
+                        hover_tile.row += 1;
+                    }
+                } else {
+                    state.hover_tile = .{ .row = state.max_column_hints, .column = state.max_row_hints };
+                }
+                self.handleColorKeyDraw();
+                self.private().drawing_area.queueDraw();
+            },
+            gdk.KEY_Left => {
+                if (state.hover_tile) |*hover_tile| {
+                    if (hover_tile.column > state.max_row_hints) {
+                        hover_tile.column -= 1;
+                    }
+                } else {
+                    state.hover_tile = .{ .row = state.max_column_hints, .column = state.max_row_hints };
+                }
+                self.handleColorKeyDraw();
+                self.private().drawing_area.queueDraw();
+            },
+            gdk.KEY_Right => {
+                if (state.hover_tile) |*hover_tile| {
+                    if (hover_tile.column < state.max_row_hints + state.column_hints.len - 1) {
+                        hover_tile.column += 1;
+                    }
+                } else {
+                    state.hover_tile = .{ .row = state.max_column_hints, .column = state.max_row_hints };
+                }
+                self.handleColorKeyDraw();
+                self.private().drawing_area.queueDraw();
+            },
+            gdk.KEY_1 => self.handleColorKeyPressed(1),
+            gdk.KEY_2 => self.handleColorKeyPressed(2),
+            gdk.KEY_3 => self.handleColorKeyPressed(3),
+            gdk.KEY_4 => self.handleColorKeyPressed(4),
+            gdk.KEY_5 => self.handleColorKeyPressed(5),
+            gdk.KEY_6 => self.handleColorKeyPressed(6),
+            gdk.KEY_7 => self.handleColorKeyPressed(7),
+            gdk.KEY_8 => self.handleColorKeyPressed(8),
+            gdk.KEY_9 => self.handleColorKeyPressed(9),
+            gdk.KEY_0 => self.handleColorKeyPressed(0),
+            else => return false,
+        }
+        return true;
+    }
+
+    fn handleKeyReleased(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, self: *Self) callconv(.C) bool {
+        switch (keyval) {
+            gdk.KEY_1,
+            gdk.KEY_2,
+            gdk.KEY_3,
+            gdk.KEY_4,
+            gdk.KEY_5,
+            gdk.KEY_6,
+            gdk.KEY_7,
+            gdk.KEY_8,
+            gdk.KEY_9,
+            gdk.KEY_0,
+            => self.handleColorKeyReleased(),
+            else => return false,
+        }
+        return true;
+    }
+
+    fn handleColorKeyPressed(self: *Self, n: usize) void {
+        const state = &(self.private().state orelse return);
+        state.holding_color_key = if (n <= state.available_colors.len) n else null;
+        self.handleColorKeyDraw();
+    }
+
+    fn handleColorKeyReleased(self: *Self) void {
+        const state = &(self.private().state orelse return);
+        state.holding_color_key = null;
+    }
+
+    fn handleColorKeyDraw(self: *Self) void {
+        const state = &(self.private().state orelse return);
+        const n = state.holding_color_key orelse return;
+        const hover_tile = state.hover_tile orelse return;
+        const hover_tile_index = state.tileIndex(hover_tile.row, hover_tile.column) orelse return;
+        state.tile_colors[hover_tile_index] = if (n > 0) state.available_colors[n - 1] else null;
         self.private().drawing_area.queueDraw();
     }
 

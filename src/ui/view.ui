@@ -9,6 +9,7 @@
           <object class="GtkDrawingArea" id="drawing_area">
             <property name="hexpand">true</property>
             <property name="vexpand">true</property>
+            <property name="focusable">true</property>
           </object>
         </child>
         <child>
