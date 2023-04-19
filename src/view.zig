@@ -376,6 +376,9 @@ pub const View = extern struct {
     fn handleDragBegin(_: *gtk.GestureDrag, x: f64, y: f64, self: *Self) callconv(.C) void {
         self.private().draw_start = .{ .x = x, .y = y };
         self.handleDrag(x, y, true);
+        // If the user clicks the drawing area, it is assumed they want to focus
+        // it for future interactions
+        _ = self.private().drawing_area.grabFocus();
     }
 
     fn handleDragUpdate(_: *gtk.GestureDrag, x: f64, y: f64, self: *Self) callconv(.C) void {
