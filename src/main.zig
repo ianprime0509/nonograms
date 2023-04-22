@@ -56,7 +56,7 @@ const Application = extern struct {
         }
 
         pub usingnamespace Parent.Class.Methods(Class);
-        pub usingnamespace Parent.Class.VirtualMethods(Class, Self);
+        pub usingnamespace Parent.VirtualMethods(Class, Self);
     };
 };
 
@@ -96,7 +96,7 @@ const ApplicationWindow = extern struct {
 
         // The function setFocus by itself is ambiguous because it could be
         // either gtk_window_set_focus or gtk_root_set_focus
-        self.as(gtk.Root).setFocus(self.private().view.private().drawing_area.as(gtk.Widget));
+        gtk.Window.OwnMethods(Self).setFocus(self, self.private().view.private().drawing_area.as(gtk.Widget));
 
         // Load an initial puzzle
         const file = gio.File.newForPath("9381.pbn");
@@ -168,6 +168,6 @@ const ApplicationWindow = extern struct {
         }
 
         pub usingnamespace Parent.Class.Methods(Class);
-        pub usingnamespace Parent.Class.VirtualMethods(Class, Self);
+        pub usingnamespace Parent.VirtualMethods(Class, Self);
     };
 };

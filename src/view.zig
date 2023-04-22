@@ -565,7 +565,7 @@ pub const View = extern struct {
         }
 
         pub usingnamespace Parent.Class.Methods(Class);
-        pub usingnamespace Parent.Class.VirtualMethods(Class, Instance);
+        pub usingnamespace Parent.VirtualMethods(Class, Instance);
     };
 };
 
@@ -685,7 +685,7 @@ pub const ColorPicker = extern struct {
         }
 
         pub usingnamespace Parent.Class.Methods(Class);
-        pub usingnamespace Parent.Class.VirtualMethods(Class, Instance);
+        pub usingnamespace Parent.VirtualMethods(Class, Instance);
     };
 };
 
@@ -799,6 +799,6 @@ pub const ColorButton = extern struct {
         }
 
         pub usingnamespace Parent.Class.Methods(Class);
-        pub usingnamespace Parent.Class.VirtualMethods(Class, Instance);
+        pub usingnamespace Parent.VirtualMethods(Class, Instance);
     };
 };
