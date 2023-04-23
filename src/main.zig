@@ -146,7 +146,7 @@ const ApplicationWindow = extern struct {
         chooser.show();
     }
 
-    fn handleOpenResponse(chooser: *gtk.FileChooserNative, _: gtk.ResponseType, self: *Self) callconv(.C) void {
+    fn handleOpenResponse(chooser: *gtk.FileChooserNative, _: c_int, self: *Self) callconv(.C) void {
         defer chooser.unref();
         const file = chooser.getFile() orelse return;
         defer file.unref();
