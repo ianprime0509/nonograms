@@ -166,7 +166,7 @@ pub const View = extern struct {
 
         self.private().arena = ArenaAllocator.init(raw_c_allocator);
 
-        _ = gobject.signalConnectData(self.private().color_picker, "color-selected", @ptrCast(gobject.Callback, &handleColorSelected), self, null, .{});
+        _ = gobject.signalConnectData(self.private().color_picker.as(gobject.Object), "color-selected", @ptrCast(gobject.Callback, &handleColorSelected), self, null, .{});
     }
 
     fn dispose(self: *Self) callconv(.C) void {
