@@ -70,6 +70,10 @@ const ApplicationWindow = extern struct {
     pub const Private = struct {
         view: *View,
         toast_overlay: *adw.ToastOverlay,
+        stack: *gtk.Stack,
+        puzzle_set_title: *gtk.Label,
+        puzzle_list: *gtk.ListBox,
+        puzzle_set: ?pbn.PuzzleSet,
 
         pub var offset: c_int = 0;
     };
@@ -94,6 +98,8 @@ const ApplicationWindow = extern struct {
         _ = open.connectActivate(*Self, &handleOpenAction, self, .{});
         self.addAction(open.as(gio.Action));
 
+        _ = self.private().puzzle_list.connectRowActivated(*Self, &handlePuzzleRowActivated, self, .{});
+
         // The function setFocus by itself is ambiguous because it could be
         // either gtk_window_set_focus or gtk_root_set_focus
         gtk.Window.OwnMethods(Self).setFocus(self, self.private().view.private().drawing_area.as(gtk.Widget));
@@ -102,6 +108,11 @@ const ApplicationWindow = extern struct {
         const file = gio.File.newForPath("9381.pbn");
         defer file.unref();
         self.openFile(file);
+    }
+
+    fn finalize(self: *Self) callconv(.C) void {
+        self.deinitPuzzleSet();
+        Class.parent.?.callFinalize(self.as(gobject.Object));
     }
 
     fn openFile(self: *Self, file: *gio.File) void {
@@ -115,12 +126,32 @@ const ApplicationWindow = extern struct {
             self.private().toast_overlay.addToast(adw.Toast.new("Failed to load puzzle"));
             return;
         };
-        defer puzzle_set.deinit();
-        if (puzzle_set.puzzles.len == 0) {
-            self.private().toast_overlay.addToast(adw.Toast.new("No puzzles in file"));
-            return;
+        self.loadPuzzleSet(puzzle_set);
+    }
+
+    fn loadPuzzleSet(self: *Self, puzzle_set: pbn.PuzzleSet) void {
+        self.deinitPuzzleSet();
+        self.private().puzzle_set = puzzle_set;
+        const puzzle_list = self.private().puzzle_list;
+        while (puzzle_list.getFirstChild()) |child| {
+            puzzle_list.remove(child);
         }
-        self.private().view.load(puzzle_set.puzzles[0]);
+        self.private().puzzle_set_title.setLabel(puzzle_set.title orelse "Puzzles");
+        for (puzzle_set.puzzles) |puzzle| {
+            const action_row = adw.ActionRow.new();
+            action_row.setTitle(puzzle.title orelse "Untitled");
+            if (puzzle.description) |description| {
+                action_row.setSubtitle(description);
+            }
+            action_row.setActivatable(true);
+            puzzle_list.append(action_row.as(gtk.Widget));
+        }
+        self.private().stack.setVisibleChildName("puzzle_selector");
+    }
+
+    fn deinitPuzzleSet(self: *Self) void {
+        const puzzle_set = &(self.private().puzzle_set orelse return);
+        puzzle_set.deinit();
     }
 
     fn handleAboutAction(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
@@ -153,18 +184,34 @@ const ApplicationWindow = extern struct {
         self.openFile(file);
     }
 
+    fn handlePuzzleRowActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Self) callconv(.C) void {
+        const puzzle_set = self.private().puzzle_set orelse return;
+        const index = @intCast(usize, row.getIndex());
+        if (index >= puzzle_set.puzzles.len) {
+            return;
+        }
+        self.private().view.load(puzzle_set.puzzles[index]);
+        self.private().stack.setVisibleChildName("view");
+    }
+
     pub usingnamespace Parent.Methods(Self);
     pub usingnamespace gio.ActionMap.Methods(Self);
 
     pub const Class = extern struct {
         parent_class: Parent.Class,
 
+        pub var parent: ?*Parent.Class = null;
+
         pub const Instance = Self;
 
         pub fn init(class: *Class) callconv(.C) void {
-            class.setTemplate(glib.Bytes.newFromSlice(template));
+            class.implementFinalize(&finalize);
+            class.setTemplateFromSlice(template);
             class.bindTemplateChild("view", .{ .private = true });
             class.bindTemplateChild("toast_overlay", .{ .private = true });
+            class.bindTemplateChild("stack", .{ .private = true });
+            class.bindTemplateChild("puzzle_set_title", .{ .private = true });
+            class.bindTemplateChild("puzzle_list", .{ .private = true });
         }
 
         pub usingnamespace Parent.Class.Methods(Class);

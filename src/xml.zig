@@ -21,13 +21,13 @@ pub fn nodeIs(node: *const c.xmlNode, ns_name: ?[:0]const u8, local_name: [:0]co
     }
 }
 
-pub fn nodeContent(allocator: Allocator, doc: *c.xmlDoc, node: ?*const c.xmlNode) ![]u8 {
-    const content = c.xmlNodeListGetString(doc, node orelse return try allocator.dupe(u8, ""), 1);
+pub fn nodeContent(allocator: Allocator, doc: *c.xmlDoc, node: ?*const c.xmlNode) ![:0]u8 {
+    const content = c.xmlNodeListGetString(doc, node orelse return try allocator.dupeZ(u8, ""), 1);
     defer free(content);
     if (content) |str| {
-        return try allocator.dupe(u8, std.mem.sliceTo(str, 0));
+        return try allocator.dupeZ(u8, std.mem.sliceTo(str, 0));
     } else {
-        return try allocator.dupe(u8, "");
+        return try allocator.dupeZ(u8, "");
     }
 }
 
@@ -42,7 +42,7 @@ pub fn attrIs(attr: *const c.xmlAttr, ns_name: ?[:0]const u8, local_name: [:0]co
     }
 }
 
-pub fn attrContent(allocator: Allocator, doc: *c.xmlDoc, attr: *const c.xmlAttr) ![]u8 {
+pub fn attrContent(allocator: Allocator, doc: *c.xmlDoc, attr: *const c.xmlAttr) ![:0]u8 {
     return try nodeContent(allocator, doc, attr.children);
 }
 

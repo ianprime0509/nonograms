@@ -17,13 +17,13 @@ pub const Error = error{InvalidPbn} || Allocator.Error;
 
 pub const PuzzleSet = struct {
     puzzles: []const Puzzle,
-    source: ?[]const u8,
-    id: ?[]const u8,
-    title: ?[]const u8,
-    author: ?[]const u8,
-    author_id: ?[]const u8,
-    copyright: ?[]const u8,
-    description: ?[]const u8,
+    source: ?[:0]const u8,
+    id: ?[:0]const u8,
+    title: ?[:0]const u8,
+    author: ?[:0]const u8,
+    author_id: ?[:0]const u8,
+    copyright: ?[:0]const u8,
+    description: ?[:0]const u8,
     arena: ArenaAllocator,
 
     pub fn parseBytes(allocator: Allocator, bytes: []const u8, url: [:0]const u8) Error!PuzzleSet {
@@ -47,13 +47,13 @@ pub const PuzzleSet = struct {
         const allocator = arena.allocator();
         const node: *c.xmlNode = c.xmlDocGetRootElement(doc) orelse return error.InvalidPbn;
 
-        var source: ?[]const u8 = null;
-        var id: ?[]const u8 = null;
-        var title: ?[]const u8 = null;
-        var author: ?[]const u8 = null;
-        var author_id: ?[]const u8 = null;
-        var copyright: ?[]const u8 = null;
-        var description: ?[]const u8 = null;
+        var source: ?[:0]const u8 = null;
+        var id: ?[:0]const u8 = null;
+        var title: ?[:0]const u8 = null;
+        var author: ?[:0]const u8 = null;
+        var author_id: ?[:0]const u8 = null;
+        var copyright: ?[:0]const u8 = null;
+        var description: ?[:0]const u8 = null;
         var puzzles = ArrayList(Puzzle).init(allocator);
 
         var maybe_child: ?*c.xmlNode = node.children;
@@ -92,30 +92,30 @@ pub const PuzzleSet = struct {
 };
 
 pub const Puzzle = struct {
-    source: ?[]const u8,
-    id: ?[]const u8,
-    title: ?[]const u8,
-    author: ?[]const u8,
-    author_id: ?[]const u8,
-    copyright: ?[]const u8,
-    description: ?[]const u8,
+    source: ?[:0]const u8,
+    id: ?[:0]const u8,
+    title: ?[:0]const u8,
+    author: ?[:0]const u8,
+    author_id: ?[:0]const u8,
+    copyright: ?[:0]const u8,
+    description: ?[:0]const u8,
     colors: StringArrayHashMap(Color),
-    default_color: []const u8,
-    background_color: []const u8,
+    default_color: [:0]const u8,
+    background_color: [:0]const u8,
     clues: EnumArray(Clues.Type, ?Clues),
     solutions: []const Solution,
 
     fn parse(allocator: Allocator, doc: *c.xmlDoc, node: *const c.xmlNode) !Puzzle {
-        var source: ?[]const u8 = null;
-        var id: ?[]const u8 = null;
-        var title: ?[]const u8 = null;
-        var author: ?[]const u8 = null;
-        var author_id: ?[]const u8 = null;
-        var copyright: ?[]const u8 = null;
-        var description: ?[]const u8 = null;
+        var source: ?[:0]const u8 = null;
+        var id: ?[:0]const u8 = null;
+        var title: ?[:0]const u8 = null;
+        var author: ?[:0]const u8 = null;
+        var author_id: ?[:0]const u8 = null;
+        var copyright: ?[:0]const u8 = null;
+        var description: ?[:0]const u8 = null;
         var colors = StringArrayHashMap(Color).init(allocator);
-        var default_color: ?[]const u8 = null;
-        var background_color: ?[]const u8 = null;
+        var default_color: ?[:0]const u8 = null;
+        var background_color: ?[:0]const u8 = null;
         var clues = EnumArray(Clues.Type, ?Clues).initFill(null);
         var solutions = ArrayList(Solution).init(allocator);
 
@@ -177,9 +177,9 @@ pub const Puzzle = struct {
 };
 
 pub const Color = struct {
-    name: []const u8,
+    name: [:0]const u8,
     char: ?u8,
-    value: []const u8,
+    value: [:0]const u8,
 
     pub const black = Color{ .name = "black", .char = 'X', .value = "000" };
     pub const white = Color{ .name = "white", .char = '.', .value = "fff" };
@@ -212,9 +212,9 @@ pub const Color = struct {
     }
 
     fn parse(allocator: Allocator, doc: *c.xmlDoc, node: *const c.xmlNode) !Color {
-        var name: ?[]const u8 = null;
+        var name: ?[:0]const u8 = null;
         var char: ?u8 = null;
-        const value: ?[]const u8 = try xml.nodeContent(allocator, doc, node.children);
+        const value: ?[:0]const u8 = try xml.nodeContent(allocator, doc, node.children);
 
         var maybe_attr: ?*c.xmlAttr = node.properties;
         while (maybe_attr) |attr| : (maybe_attr = attr.next) {
@@ -291,11 +291,11 @@ pub const Line = struct {
 };
 
 pub const Count = struct {
-    color: ?[]const u8,
+    color: ?[:0]const u8,
     n: usize,
 
     fn parse(allocator: Allocator, doc: *c.xmlDoc, node: *const c.xmlNode) !Count {
-        var color: ?[]const u8 = null;
+        var color: ?[:0]const u8 = null;
         const n = blk: {
             const content = try xml.nodeContent(allocator, doc, node.children);
             defer allocator.free(content);
@@ -350,7 +350,7 @@ pub const Solution = struct {
 };
 
 pub const Image = struct {
-    text: []const u8,
+    text: [:0]const u8,
 
     fn parse(allocator: Allocator, doc: *c.xmlDoc, node: *const c.xmlNode) !Image {
         return .{ .text = try xml.nodeContent(allocator, doc, node.children) };
