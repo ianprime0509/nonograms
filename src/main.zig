@@ -68,11 +68,12 @@ const ApplicationWindow = extern struct {
     const Self = @This();
 
     pub const Private = struct {
-        view: *View,
+        window_title: *adw.WindowTitle,
         toast_overlay: *adw.ToastOverlay,
         stack: *gtk.Stack,
         puzzle_set_title: *gtk.Label,
         puzzle_list: *gtk.ListBox,
+        view: *View,
         puzzle_set: ?pbn.PuzzleSet,
 
         pub var offset: c_int = 0;
@@ -136,7 +137,11 @@ const ApplicationWindow = extern struct {
         while (puzzle_list.getFirstChild()) |child| {
             puzzle_list.remove(child);
         }
+        self.private().window_title.setTitle(puzzle_set.title orelse "Nonograms");
         self.private().puzzle_set_title.setLabel(puzzle_set.title orelse "Puzzles");
+        if (puzzle_set.description) |description| {
+            self.private().window_title.setSubtitle(description);
+        }
         for (puzzle_set.puzzles) |puzzle| {
             const action_row = adw.ActionRow.new();
             action_row.setTitle(puzzle.title orelse "Untitled");
@@ -147,6 +152,15 @@ const ApplicationWindow = extern struct {
             puzzle_list.append(action_row.as(gtk.Widget));
         }
         self.private().stack.setVisibleChildName("puzzle_selector");
+    }
+
+    fn loadPuzzle(self: *Self, puzzle: pbn.Puzzle) void {
+        self.private().window_title.setTitle(puzzle.title orelse "Nonograms");
+        if (puzzle.description) |description| {
+            self.private().window_title.setSubtitle(description);
+        }
+        self.private().view.load(puzzle);
+        self.private().stack.setVisibleChildName("view");
     }
 
     fn deinitPuzzleSet(self: *Self) void {
@@ -190,8 +204,7 @@ const ApplicationWindow = extern struct {
         if (index >= puzzle_set.puzzles.len) {
             return;
         }
-        self.private().view.load(puzzle_set.puzzles[index]);
-        self.private().stack.setVisibleChildName("view");
+        self.loadPuzzle(puzzle_set.puzzles[index]);
     }
 
     pub usingnamespace Parent.Methods(Self);
@@ -207,11 +220,12 @@ const ApplicationWindow = extern struct {
         pub fn init(class: *Class) callconv(.C) void {
             class.implementFinalize(&finalize);
             class.setTemplateFromSlice(template);
-            class.bindTemplateChild("view", .{ .private = true });
+            class.bindTemplateChild("window_title", .{ .private = true });
             class.bindTemplateChild("toast_overlay", .{ .private = true });
             class.bindTemplateChild("stack", .{ .private = true });
             class.bindTemplateChild("puzzle_set_title", .{ .private = true });
             class.bindTemplateChild("puzzle_list", .{ .private = true });
+            class.bindTemplateChild("view", .{ .private = true });
         }
 
         pub usingnamespace Parent.Class.Methods(Class);

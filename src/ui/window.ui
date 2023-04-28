@@ -12,6 +12,9 @@
         <property name="orientation">vertical</property>
         <child>
           <object class="AdwHeaderBar">
+            <property name="title-widget">
+              <object class="AdwWindowTitle" id="window_title" />
+            </property>
             <child type="end">
               <object class="GtkMenuButton">
                 <property name="icon-name">open-menu</property>
