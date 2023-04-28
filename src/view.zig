@@ -47,6 +47,27 @@ const State = struct {
     max_column_hints: usize,
     hover_tile: ?Cell,
 
+    fn moveHoverTile(self: *State, drow: isize, dcolumn: isize) void {
+        var hover_tile = self.hover_tile orelse {
+            self.hover_tile = .{ .row = self.max_column_hints, .column = self.max_row_hints };
+            return;
+        };
+        if (drow < 0) {
+            hover_tile.row -|= @intCast(usize, -drow);
+        } else {
+            hover_tile.row +|= @intCast(usize, drow);
+        }
+        if (dcolumn < 0) {
+            hover_tile.column -|= @intCast(usize, -dcolumn);
+        } else {
+            hover_tile.column +|= @intCast(usize, dcolumn);
+        }
+        self.hover_tile = .{
+            .row = math.clamp(hover_tile.row, self.max_column_hints, self.max_column_hints + self.row_hints.len - 1),
+            .column = math.clamp(hover_tile.column, self.max_row_hints, self.max_row_hints + self.column_hints.len - 1),
+        };
+    }
+
     fn tileIndex(self: State, row: usize, column: usize) ?usize {
         const row_in_bounds = row >= self.max_column_hints and row < self.max_column_hints + self.row_hints.len;
         const column_in_bounds = column >= self.max_row_hints and column < self.max_row_hints + self.column_hints.len;
@@ -429,46 +450,22 @@ pub const View = extern struct {
         const state = &(self.private().state orelse return false);
         switch (keyval) {
             gdk.KEY_Up => {
-                if (state.hover_tile) |*hover_tile| {
-                    if (hover_tile.row > state.max_column_hints) {
-                        hover_tile.row -= 1;
-                    }
-                } else {
-                    state.hover_tile = .{ .row = state.max_column_hints, .column = state.max_row_hints };
-                }
+                state.moveHoverTile(-1, 0);
                 self.handleDrawIfDrawing();
                 self.private().drawing_area.queueDraw();
             },
             gdk.KEY_Down => {
-                if (state.hover_tile) |*hover_tile| {
-                    if (hover_tile.row < state.max_column_hints + state.row_hints.len - 1) {
-                        hover_tile.row += 1;
-                    }
-                } else {
-                    state.hover_tile = .{ .row = state.max_column_hints, .column = state.max_row_hints };
-                }
+                state.moveHoverTile(1, 0);
                 self.handleDrawIfDrawing();
                 self.private().drawing_area.queueDraw();
             },
             gdk.KEY_Left => {
-                if (state.hover_tile) |*hover_tile| {
-                    if (hover_tile.column > state.max_row_hints) {
-                        hover_tile.column -= 1;
-                    }
-                } else {
-                    state.hover_tile = .{ .row = state.max_column_hints, .column = state.max_row_hints };
-                }
+                state.moveHoverTile(0, -1);
                 self.handleDrawIfDrawing();
                 self.private().drawing_area.queueDraw();
             },
             gdk.KEY_Right => {
-                if (state.hover_tile) |*hover_tile| {
-                    if (hover_tile.column < state.max_row_hints + state.column_hints.len - 1) {
-                        hover_tile.column += 1;
-                    }
-                } else {
-                    state.hover_tile = .{ .row = state.max_column_hints, .column = state.max_row_hints };
-                }
+                state.moveHoverTile(0, 1);
                 self.handleDrawIfDrawing();
                 self.private().drawing_area.queueDraw();
             },
