@@ -9,9 +9,10 @@ const mem = std.mem;
 const meta = std.meta;
 const Allocator = mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
-const ArrayList = std.ArrayList;
+const ArrayListUnmanaged = std.ArrayListUnmanaged;
+const AutoHashMapUnmanaged = std.AutoHashMapUnmanaged;
 const EnumArray = std.EnumArray;
-const StringArrayHashMap = std.StringArrayHashMap;
+const StringArrayHashMapUnmanaged = std.StringArrayHashMapUnmanaged;
 
 pub const Error = error{InvalidPbn} || Allocator.Error;
 pub const WriteError = error{WriteFailed};
@@ -60,7 +61,7 @@ pub const PuzzleSet = struct {
         var author: ?[:0]const u8 = null;
         var author_id: ?[:0]const u8 = null;
         var copyright: ?[:0]const u8 = null;
-        var puzzles = ArrayList(Puzzle).init(allocator);
+        var puzzles = ArrayListUnmanaged(Puzzle){};
 
         var maybe_child: ?*c.xmlNode = node.children;
         while (maybe_child) |child| : (maybe_child = child.next) {
@@ -77,7 +78,7 @@ pub const PuzzleSet = struct {
             } else if (xml.nodeIs(child, null, "copyright")) {
                 copyright = try xml.nodeContent(allocator, child);
             } else if (xml.nodeIs(child, null, "puzzle")) {
-                try puzzles.append(try Puzzle.parse(allocator, child));
+                try puzzles.append(allocator, try Puzzle.parse(allocator, child));
             }
         }
 
@@ -130,10 +131,11 @@ pub const Puzzle = struct {
     author_id: ?[:0]const u8,
     copyright: ?[:0]const u8,
     description: ?[:0]const u8,
-    colors: StringArrayHashMap(Color),
+    colors: StringArrayHashMapUnmanaged(Color),
     default_color: [:0]const u8,
     background_color: [:0]const u8,
-    clues: EnumArray(Clues.Type, ?Clues),
+    row_clues: Clues,
+    column_clues: Clues,
     solutions: []const Solution,
 
     fn parse(allocator: Allocator, node: *const c.xmlNode) !Puzzle {
@@ -144,15 +146,16 @@ pub const Puzzle = struct {
         var author_id: ?[:0]const u8 = null;
         var copyright: ?[:0]const u8 = null;
         var description: ?[:0]const u8 = null;
-        var colors = StringArrayHashMap(Color).init(allocator);
+        var colors = StringArrayHashMapUnmanaged(Color){};
         var default_color: ?[:0]const u8 = null;
         var background_color: ?[:0]const u8 = null;
-        var clues = EnumArray(Clues.Type, ?Clues).initFill(null);
-        var solutions = ArrayList(Solution).init(allocator);
+        var row_clues: ?Clues = null;
+        var column_clues: ?Clues = null;
+        var solutions = ArrayListUnmanaged(Solution){};
 
         // Predefined colors
-        try colors.put("black", Color.black);
-        try colors.put("white", Color.white);
+        try colors.put(allocator, "black", Color.black);
+        try colors.put(allocator, "white", Color.white);
 
         var maybe_attr: ?*c.xmlAttr = node.properties;
         while (maybe_attr) |attr| : (maybe_attr = attr.next) {
@@ -181,12 +184,29 @@ pub const Puzzle = struct {
                 description = try xml.nodeContent(allocator, child);
             } else if (xml.nodeIs(child, null, "color")) {
                 const color = try Color.parse(allocator, child);
-                try colors.put(color.name, color);
+                try colors.put(allocator, color.name, color);
             } else if (xml.nodeIs(child, null, "clues")) {
                 const parsed_clues = try Clues.parse(allocator, child);
-                clues.set(parsed_clues.type, parsed_clues);
+                switch (parsed_clues.type) {
+                    .rows => row_clues = parsed_clues,
+                    .columns => column_clues = parsed_clues,
+                }
             } else if (xml.nodeIs(child, null, "solution")) {
-                try solutions.append(try Solution.parse(allocator, child));
+                try solutions.append(allocator, try Solution.parse(allocator, child));
+            }
+        }
+
+        if (row_clues == null or column_clues == null) {
+            find_solution: {
+                for (solutions.items) |solution| {
+                    if (solution.type == .goal) {
+                        const clues = try solution.image.toClues(allocator, colors.values(), background_color orelse "white");
+                        row_clues = clues.rows;
+                        column_clues = clues.columns;
+                        break :find_solution;
+                    }
+                }
+                return error.InvalidPbn;
             }
         }
 
@@ -201,7 +221,10 @@ pub const Puzzle = struct {
             .colors = colors,
             .default_color = default_color orelse "black",
             .background_color = background_color orelse "white",
-            .clues = clues,
+            // row_clues and column_clues cannot be null here since we tried to
+            // derive them above, already failing if that wasn't possible
+            .row_clues = row_clues.?,
+            .column_clues = column_clues.?,
             .solutions = solutions.items,
         };
     }
@@ -234,11 +257,8 @@ pub const Puzzle = struct {
         for (self.colors.values()) |color| {
             try color.write(writer);
         }
-        for (meta.tags(Clues.Type)) |clues_type| {
-            if (self.clues.get(clues_type)) |clues| {
-                try clues.write(writer);
-            }
-        }
+        try self.row_clues.write(writer);
+        try self.column_clues.write(writer);
         for (self.solutions) |solution| {
             try solution.write(writer);
         }
@@ -326,7 +346,7 @@ pub const Clues = struct {
 
     fn parse(allocator: Allocator, node: *const c.xmlNode) !Clues {
         var @"type": ?Type = null;
-        var lines = ArrayList(Line).init(allocator);
+        var lines = ArrayListUnmanaged(Line){};
 
         var maybe_attr: ?*c.xmlAttr = node.properties;
         while (maybe_attr) |attr| : (maybe_attr = attr.next) {
@@ -340,7 +360,7 @@ pub const Clues = struct {
         var maybe_child: ?*c.xmlNode = node.children;
         while (maybe_child) |child| : (maybe_child = child.next) {
             if (xml.nodeIs(child, null, "line")) {
-                try lines.append(try Line.parse(allocator, child));
+                try lines.append(allocator, try Line.parse(allocator, child));
             }
         }
 
@@ -364,12 +384,12 @@ pub const Line = struct {
     counts: []const Count,
 
     fn parse(allocator: Allocator, node: *const c.xmlNode) !Line {
-        var counts = ArrayList(Count).init(allocator);
+        var counts = ArrayListUnmanaged(Count){};
 
         var maybe_child: ?*c.xmlNode = node.children;
         while (maybe_child) |child| : (maybe_child = child.next) {
             if (xml.nodeIs(child, null, "count")) {
-                try counts.append(try Count.parse(allocator, child));
+                try counts.append(allocator, try Count.parse(allocator, child));
             }
         }
 
@@ -452,7 +472,7 @@ pub const Solution = struct {
         }
 
         return .{
-            .type = @"type" orelse return error.InvalidPbn,
+            .type = @"type" orelse .goal,
             .image = image orelse return error.InvalidPbn,
         };
     }
@@ -467,6 +487,101 @@ pub const Solution = struct {
 
 pub const Image = struct {
     text: [:0]const u8,
+
+    pub fn toClues(self: Image, allocator: Allocator, colors: []const Color, background_color: []const u8) Error!struct { rows: Clues, columns: Clues } {
+        var image_colors = ArrayListUnmanaged(u8){};
+        defer image_colors.deinit(allocator);
+
+        var rows: usize = 0;
+        var columns: usize = 0;
+        var pos: usize = 0;
+        var maybe_row_start = mem.indexOfScalarPos(u8, self.text, pos, '|');
+        while (maybe_row_start) |row_start| : (maybe_row_start = mem.indexOfScalarPos(u8, self.text, pos, '|')) {
+            const row_end = mem.indexOfScalarPos(u8, self.text, row_start + 1, '|') orelse return error.InvalidPbn;
+            const row_chars = self.text[row_start + 1 .. row_end];
+            if (columns == 0) {
+                columns = row_chars.len;
+            } else if (columns != row_chars.len) {
+                return error.InvalidPbn;
+            }
+            try image_colors.appendSlice(allocator, row_chars);
+            rows += 1;
+            pos = row_end + 1;
+        }
+
+        var color_names = AutoHashMapUnmanaged(u8, [:0]const u8){};
+        defer color_names.deinit(allocator);
+        try color_names.ensureTotalCapacity(allocator, @truncate(u32, colors.len));
+        var bg_color_char: ?u8 = null;
+        for (colors) |color| {
+            if (color.char) |char| {
+                try color_names.put(allocator, char, color.name);
+                if (mem.eql(u8, color.name, background_color)) {
+                    bg_color_char = char;
+                }
+            }
+        }
+
+        var row_lines = try ArrayListUnmanaged(Line).initCapacity(allocator, rows);
+        for (0..rows) |i| {
+            var counts = ArrayListUnmanaged(Count){};
+            var run_color: ?u8 = null;
+            var run_len: usize = 0;
+            for (0..columns) |j| {
+                const color = image_colors.items[columns * i + j];
+                if (color != run_color) {
+                    if (run_len > 0 and run_color != bg_color_char) {
+                        try counts.append(allocator, .{
+                            .color = color_names.get(run_color.?) orelse return error.InvalidPbn,
+                            .n = run_len,
+                        });
+                    }
+                    run_color = color;
+                    run_len = 0;
+                }
+                run_len += 1;
+            }
+            if (run_len > 0 and run_color != bg_color_char) {
+                try counts.append(allocator, .{
+                    .color = color_names.get(run_color.?) orelse return error.InvalidPbn,
+                    .n = run_len,
+                });
+            }
+            try row_lines.append(allocator, .{ .counts = counts.items });
+        }
+        var column_lines = try ArrayListUnmanaged(Line).initCapacity(allocator, columns);
+        for (0..columns) |j| {
+            var counts = ArrayListUnmanaged(Count){};
+            var run_color: ?u8 = null;
+            var run_len: usize = 0;
+            for (0..rows) |i| {
+                const color = image_colors.items[columns * i + j];
+                if (color != run_color) {
+                    if (run_len > 0 and run_color != bg_color_char) {
+                        try counts.append(allocator, .{
+                            .color = color_names.get(run_color.?) orelse return error.InvalidPbn,
+                            .n = run_len,
+                        });
+                    }
+                    run_color = color;
+                    run_len = 0;
+                }
+                run_len += 1;
+            }
+            if (run_len > 0 and run_color != bg_color_char) {
+                try counts.append(allocator, .{
+                    .color = color_names.get(run_color.?) orelse return error.InvalidPbn,
+                    .n = run_len,
+                });
+            }
+            try column_lines.append(allocator, .{ .counts = counts.items });
+        }
+
+        return .{
+            .rows = .{ .type = .rows, .lines = row_lines.items },
+            .columns = .{ .type = .columns, .lines = column_lines.items },
+        };
+    }
 
     fn parse(allocator: Allocator, node: *const c.xmlNode) !Image {
         return .{ .text = try xml.nodeContent(allocator, node) };

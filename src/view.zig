@@ -204,12 +204,10 @@ pub const View = extern struct {
         _ = self.private().arena.reset(.retain_capacity);
         const allocator = self.private().arena.allocator();
 
-        const row_clues = puzzle.clues.get(.rows) orelse return;
-        const column_clues = puzzle.clues.get(.columns) orelse return;
-        const rows = row_clues.lines.len;
+        const rows = puzzle.row_clues.lines.len;
         const row_hints = allocator.alloc([]Hint, rows) catch oom();
         var max_row_hints: usize = 0;
-        for (row_hints, row_clues.lines) |*row, line| {
+        for (row_hints, puzzle.row_clues.lines) |*row, line| {
             row.* = allocator.alloc(Hint, line.counts.len) catch oom();
             max_row_hints = @max(max_row_hints, line.counts.len);
             for (row.*, line.counts) |*hint, count| {
@@ -218,10 +216,10 @@ pub const View = extern struct {
                 hint.* = Hint{ .n = count.n, .color = Color.fromPbn(color) catch Color.black };
             }
         }
-        const columns = column_clues.lines.len;
+        const columns = puzzle.column_clues.lines.len;
         const column_hints = allocator.alloc([]Hint, columns) catch oom();
         var max_column_hints: usize = 0;
-        for (column_hints, column_clues.lines) |*column, line| {
+        for (column_hints, puzzle.column_clues.lines) |*column, line| {
             column.* = allocator.alloc(Hint, line.counts.len) catch oom();
             max_column_hints = @max(max_column_hints, line.counts.len);
             for (column.*, line.counts) |*hint, count| {
