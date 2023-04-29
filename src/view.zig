@@ -8,9 +8,13 @@ const pango = @import("pango");
 const pangocairo = @import("pangocairo");
 const pbn = @import("pbn.zig");
 const util = @import("util.zig");
+const ascii = std.ascii;
+const fmt = std.fmt;
 const mem = std.mem;
+const Allocator = mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
-const ArrayList = std.ArrayList;
+const ArrayListUnmanaged = std.ArrayListUnmanaged;
+const StringHashMapUnmanaged = std.StringHashMapUnmanaged;
 const math = std.math;
 const oom = util.oom;
 const raw_c_allocator = std.heap.raw_c_allocator;
@@ -27,6 +31,16 @@ const Color = struct {
     fn fromPbn(color: pbn.Color) !Color {
         const rgb = try color.toFloatRgb();
         return .{ .r = rgb.r, .g = rgb.g, .b = rgb.b };
+    }
+
+    fn toHex(self: Color) [6]u8 {
+        var buf: [6]u8 = undefined;
+        _ = fmt.bufPrint(&buf, "{X:0>2}{X:0>2}{X:0>2}", .{
+            @floatToInt(u8, @round(self.r * 255)),
+            @floatToInt(u8, @round(self.g * 255)),
+            @floatToInt(u8, @round(self.b * 255)),
+        }) catch unreachable;
+        return buf;
     }
 };
 
@@ -76,6 +90,42 @@ const State = struct {
         } else {
             return null;
         }
+    }
+
+    fn toImage(self: State, allocator: Allocator, colors: []const pbn.Color) ![:0]u8 {
+        var color_chars = StringHashMapUnmanaged(u8){};
+        defer {
+            var key_iterator = color_chars.keyIterator();
+            while (key_iterator.next()) |key| {
+                allocator.free(key.*);
+            }
+            color_chars.deinit(allocator);
+        }
+        try color_chars.ensureTotalCapacity(allocator, @truncate(u32, colors.len));
+        for (colors) |color| {
+            if (color.char) |char| {
+                const value = try ascii.allocUpperString(allocator, color.value);
+                errdefer allocator.free(value);
+                try color_chars.put(allocator, value, char);
+            }
+        }
+
+        var image = ArrayListUnmanaged(u8){};
+        var rows = mem.window(?Color, self.tile_colors, self.column_hints.len, self.column_hints.len);
+        while (rows.next()) |row| {
+            try image.append(allocator, '|');
+            for (row) |maybe_color| {
+                if (maybe_color) |color| {
+                    try image.append(allocator, color_chars.get(&color.toHex()) orelse '.');
+                } else {
+                    try image.appendSlice(allocator, "[]");
+                }
+            }
+            try image.appendSlice(allocator, "|\n");
+        }
+        const len = image.items.len;
+        try image.append(allocator, 0);
+        return (try image.toOwnedSlice(allocator))[0..len :0];
     }
 };
 
@@ -255,6 +305,11 @@ pub const View = extern struct {
         self.private().drawing_area.queueDraw();
 
         self.private().color_picker.load(puzzle);
+    }
+
+    pub fn getImage(self: *Self, allocator: Allocator, colors: []const pbn.Color) !?[:0]u8 {
+        const state = self.private().state orelse return null;
+        return try state.toImage(allocator, colors);
     }
 
     fn draw(_: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, user_data: ?*anyopaque) callconv(.C) void {
@@ -613,7 +668,7 @@ pub const ColorPicker = extern struct {
         _ = self.private().arena.reset(.retain_capacity);
         const allocator = self.private().arena.allocator();
 
-        var buttons = ArrayList(*ColorButton).init(allocator);
+        var buttons = ArrayListUnmanaged(*ColorButton){};
         const none_button = ColorButton.new(
             Color.fromPbn(puzzle.colors.get(puzzle.background_color) orelse pbn.Color.white) catch Color.white,
             Color.fromPbn(puzzle.colors.get(puzzle.default_color) orelse pbn.Color.black) catch Color.black,
@@ -621,7 +676,7 @@ pub const ColorPicker = extern struct {
         );
         self.private().box.append(none_button.as(gtk.Widget));
         _ = none_button.connectToggled(*Self, &handleButtonToggled, self, .{});
-        buttons.append(none_button) catch oom();
+        buttons.append(allocator, none_button) catch oom();
 
         var last_button: *gtk.ToggleButton = none_button.as(gtk.ToggleButton);
         for (puzzle.colors.values(), 1..) |color, number| {
@@ -633,7 +688,7 @@ pub const ColorPicker = extern struct {
                 button.setActive(true);
             }
             _ = button.connectToggled(*Self, &handleButtonToggled, self, .{});
-            buttons.append(button) catch oom();
+            buttons.append(allocator, button) catch oom();
         }
 
         self.private().buttons = buttons.items;

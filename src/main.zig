@@ -75,6 +75,7 @@ const ApplicationWindow = extern struct {
         puzzle_list: *gtk.ListBox,
         view: *View,
         puzzle_set: ?pbn.PuzzleSet,
+        puzzle_index: ?usize,
 
         pub var offset: c_int = 0;
     };
@@ -99,6 +100,7 @@ const ApplicationWindow = extern struct {
         _ = open.connectActivate(*Self, &handleOpenAction, self, .{});
         self.addAction(open.as(gio.Action));
 
+        _ = self.connectCloseRequest(?*anyopaque, &handleCloseRequest, null, .{});
         _ = self.private().puzzle_list.connectRowActivated(*Self, &handlePuzzleRowActivated, self, .{});
 
         // The function setFocus by itself is ambiguous because it could be
@@ -133,6 +135,7 @@ const ApplicationWindow = extern struct {
     fn loadPuzzleSet(self: *Self, puzzle_set: pbn.PuzzleSet) void {
         self.deinitPuzzleSet();
         self.private().puzzle_set = puzzle_set;
+        self.private().puzzle_index = null;
         const puzzle_list = self.private().puzzle_list;
         while (puzzle_list.getFirstChild()) |child| {
             puzzle_list.remove(child);
@@ -189,12 +192,23 @@ const ApplicationWindow = extern struct {
         self.openFile(file);
     }
 
+    fn handleCloseRequest(self: *Self, _: ?*anyopaque) callconv(.C) bool {
+        const puzzle_set = &(self.private().puzzle_set orelse return false);
+        const puzzle_index = self.private().puzzle_index orelse return false;
+        const allocator = puzzle_set.arena.allocator();
+        const image = (self.private().view.getImage(allocator, puzzle_set.puzzles[puzzle_index].colors.values()) catch return false) orelse return false;
+        defer allocator.free(image);
+        std.debug.print("{s}\n", .{image});
+        return false;
+    }
+
     fn handlePuzzleRowActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Self) callconv(.C) void {
         const puzzle_set = self.private().puzzle_set orelse return;
         const index = @intCast(usize, row.getIndex());
         if (index >= puzzle_set.puzzles.len) {
             return;
         }
+        self.private().puzzle_index = index;
         self.loadPuzzle(puzzle_set.puzzles[index]);
     }
 
