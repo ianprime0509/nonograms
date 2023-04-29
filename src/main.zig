@@ -137,17 +137,11 @@ const ApplicationWindow = extern struct {
         while (puzzle_list.getFirstChild()) |child| {
             puzzle_list.remove(child);
         }
-        self.private().window_title.setTitle(puzzle_set.title orelse "Nonograms");
+        self.private().window_title.setSubtitle(puzzle_set.title orelse "");
         self.private().puzzle_set_title.setLabel(puzzle_set.title orelse "Puzzles");
-        if (puzzle_set.description) |description| {
-            self.private().window_title.setSubtitle(description);
-        }
         for (puzzle_set.puzzles) |puzzle| {
             const action_row = adw.ActionRow.new();
             action_row.setTitle(puzzle.title orelse "Untitled");
-            if (puzzle.description) |description| {
-                action_row.setSubtitle(description);
-            }
             action_row.setActivatable(true);
             puzzle_list.append(action_row.as(gtk.Widget));
         }
@@ -155,10 +149,7 @@ const ApplicationWindow = extern struct {
     }
 
     fn loadPuzzle(self: *Self, puzzle: pbn.Puzzle) void {
-        self.private().window_title.setTitle(puzzle.title orelse "Nonograms");
-        if (puzzle.description) |description| {
-            self.private().window_title.setSubtitle(description);
-        }
+        self.private().window_title.setSubtitle(puzzle.title orelse "");
         self.private().view.load(puzzle);
         self.private().stack.setVisibleChildName("view");
     }
