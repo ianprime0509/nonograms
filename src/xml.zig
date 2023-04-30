@@ -21,8 +21,8 @@ pub fn nodeIs(node: *const c.xmlNode, ns_name: ?[:0]const u8, local_name: [:0]co
     }
 }
 
-pub fn nodeContent(allocator: Allocator, node: ?*const c.xmlNode) ![:0]u8 {
-    const content = c.xmlNodeGetContent(node orelse return try allocator.dupeZ(u8, ""));
+pub fn nodeContent(allocator: Allocator, node: *const c.xmlNode) ![:0]u8 {
+    const content = c.xmlNodeGetContent(node);
     defer free(content);
     if (content) |str| {
         return try allocator.dupeZ(u8, std.mem.sliceTo(str, 0));

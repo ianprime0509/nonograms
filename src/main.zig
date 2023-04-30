@@ -5,12 +5,15 @@ const gio = @import("gio");
 const gtk = @import("gtk");
 const adw = @import("adw");
 const pbn = @import("pbn.zig");
+const util = @import("util.zig");
 const view = @import("view.zig");
+const ArrayListUnmanaged = std.ArrayListUnmanaged;
 const ColorButton = view.ColorButton;
 const ColorPicker = view.ColorPicker;
 const View = view.View;
 const c_allocator = std.heap.c_allocator;
 const mem = std.mem;
+const oom = util.oom;
 
 pub fn main() !void {
     _ = Application.getType();
@@ -75,6 +78,7 @@ const ApplicationWindow = extern struct {
         puzzle_list: *gtk.ListBox,
         view: *View,
         puzzle_set: ?pbn.PuzzleSet,
+        puzzle_set_uri: ?[:0]u8,
         puzzle_index: ?usize,
 
         pub var offset: c_int = 0;
@@ -121,11 +125,14 @@ const ApplicationWindow = extern struct {
     fn openFile(self: *Self, file: *gio.File) void {
         const contents = file.loadBytes(null, null, null) orelse return;
         defer contents.unref();
-        const url = file.getUri();
-        defer glib.free(url);
+        if (self.private().puzzle_set_uri) |uri| {
+            glib.free(uri.ptr);
+        }
+        const uri = mem.sliceTo(file.getUri(), 0);
+        self.private().puzzle_set_uri = uri;
         var size: usize = undefined;
         const bytes = contents.getData(&size);
-        var puzzle_set = pbn.PuzzleSet.parseBytes(c_allocator, bytes[0..size], mem.sliceTo(url, 0)) catch {
+        var puzzle_set = pbn.PuzzleSet.parseBytes(c_allocator, bytes[0..size], uri) catch {
             self.private().toast_overlay.addToast(adw.Toast.new("Failed to load puzzle"));
             return;
         };
@@ -193,12 +200,39 @@ const ApplicationWindow = extern struct {
     }
 
     fn handleCloseRequest(self: *Self, _: ?*anyopaque) callconv(.C) bool {
-        const puzzle_set = &(self.private().puzzle_set orelse return false);
+        const puzzle_set_path = path: {
+            const uri = self.private().puzzle_set_uri orelse return false;
+            const file = gio.File.newForUri(uri);
+            defer file.unref();
+            break :path mem.sliceTo(file.getPath() orelse return false, 0);
+        };
+        defer glib.free(puzzle_set_path.ptr);
         const puzzle_index = self.private().puzzle_index orelse return false;
-        const allocator = puzzle_set.arena.allocator();
-        const image = (self.private().view.getImage(allocator, puzzle_set.puzzles[puzzle_index].colors.values()) catch return false) orelse return false;
-        defer allocator.free(image);
-        std.debug.print("{s}\n", .{image});
+
+        var puzzle_set = self.private().puzzle_set orelse return false;
+        var puzzle = puzzle_set.puzzles[puzzle_index];
+        const image = (self.private().view.getImage(c_allocator, puzzle.colors.values()) catch return false) orelse return false;
+        defer image.deinit(c_allocator);
+        var solutions = ArrayListUnmanaged(pbn.Solution).initCapacity(c_allocator, puzzle.solutions.len) catch oom();
+        defer solutions.deinit(c_allocator);
+        solutions.appendSliceAssumeCapacity(puzzle.solutions);
+        var saved_index: usize = 0;
+        while (saved_index < solutions.items.len) : (saved_index += 1) {
+            if (solutions.items[saved_index].type == .saved) {
+                break;
+            }
+        } else {
+            solutions.append(c_allocator, .{ .type = .saved, .image = undefined }) catch oom();
+        }
+        solutions.items[saved_index].image = image;
+        puzzle.solutions = solutions.items;
+        var puzzles = c_allocator.dupe(pbn.Puzzle, puzzle_set.puzzles) catch oom();
+        defer c_allocator.free(puzzles);
+        puzzles[puzzle_index] = puzzle;
+        puzzle_set.puzzles = puzzles;
+
+        puzzle_set.writeFile(puzzle_set_path) catch return false;
+
         return false;
     }
 

@@ -4,6 +4,7 @@
 const std = @import("std");
 const c = @import("c.zig");
 const xml = @import("xml.zig");
+const ascii = std.ascii;
 const fmt = std.fmt;
 const mem = std.mem;
 const meta = std.meta;
@@ -89,7 +90,7 @@ pub const PuzzleSet = struct {
             .author = author,
             .author_id = author_id,
             .copyright = copyright,
-            .puzzles = puzzles.items,
+            .puzzles = try puzzles.toOwnedSlice(allocator),
             .arena = arena,
         };
     }
@@ -225,7 +226,7 @@ pub const Puzzle = struct {
             // derive them above, already failing if that wasn't possible
             .row_clues = row_clues.?,
             .column_clues = column_clues.?,
-            .solutions = solutions.items,
+            .solutions = try solutions.toOwnedSlice(allocator),
         };
     }
 
@@ -331,7 +332,7 @@ pub const Color = struct {
         try xml.handle(c.xmlTextWriterStartElement(writer, "color"));
         try xml.handle(c.xmlTextWriterWriteAttribute(writer, "name", self.name));
         if (self.char) |char| {
-            try xml.handle(c.xmlTextWriterWriteAttribute(writer, "char", &[_:0]u8{ char, 0 }));
+            try xml.handle(c.xmlTextWriterWriteAttribute(writer, "char", &[_:0]u8{char}));
         }
         try xml.handle(c.xmlTextWriterWriteString(writer, self.value));
         try xml.handle(c.xmlTextWriterEndElement(writer));
@@ -366,7 +367,7 @@ pub const Clues = struct {
 
         return .{
             .type = @"type" orelse return error.InvalidPbn,
-            .lines = lines.items,
+            .lines = try lines.toOwnedSlice(allocator),
         };
     }
 
@@ -394,7 +395,7 @@ pub const Line = struct {
         }
 
         return .{
-            .counts = counts.items,
+            .counts = try counts.toOwnedSlice(allocator),
         };
     }
 
@@ -486,49 +487,92 @@ pub const Solution = struct {
 };
 
 pub const Image = struct {
-    text: [:0]const u8,
+    rows: usize,
+    columns: usize,
+    chars: []const []const u8,
 
-    pub fn toClues(self: Image, allocator: Allocator, colors: []const Color, background_color: []const u8) Error!struct { rows: Clues, columns: Clues } {
-        var image_colors = ArrayListUnmanaged(u8){};
-        defer image_colors.deinit(allocator);
+    pub fn deinit(self: Image, allocator: Allocator) void {
+        for (self.chars) |options| {
+            allocator.free(options);
+        }
+        allocator.free(self.chars);
+    }
+
+    pub fn fromText(allocator: Allocator, text: []const u8) Error!Image {
+        var chars = ArrayListUnmanaged([]const u8){};
+        errdefer {
+            for (chars.items) |options| {
+                allocator.free(options);
+            }
+            chars.deinit(allocator);
+        }
 
         var rows: usize = 0;
         var columns: usize = 0;
         var pos: usize = 0;
-        var maybe_row_start = mem.indexOfScalarPos(u8, self.text, pos, '|');
-        while (maybe_row_start) |row_start| : (maybe_row_start = mem.indexOfScalarPos(u8, self.text, pos, '|')) {
-            const row_end = mem.indexOfScalarPos(u8, self.text, row_start + 1, '|') orelse return error.InvalidPbn;
-            const row_chars = self.text[row_start + 1 .. row_end];
+        var maybe_row_start = mem.indexOfScalarPos(u8, text, pos, '|');
+        while (maybe_row_start) |row_start| : (maybe_row_start = mem.indexOfScalarPos(u8, text, pos, '|')) {
+            const row_end = mem.indexOfScalarPos(u8, text, row_start + 1, '|') orelse return error.InvalidPbn;
+            const row_chars = text[row_start + 1 .. row_end];
+            var row_columns: usize = 0;
+            var row_pos: usize = 0;
+
+            while (row_pos < row_chars.len) {
+                if (ascii.isWhitespace(row_chars[row_pos])) {
+                    continue;
+                } else if (row_chars[row_pos] == '[') {
+                    const options_end = mem.indexOfScalarPos(u8, row_chars, row_pos + 1, ']') orelse return error.InvalidPbn;
+                    try chars.append(allocator, try allocator.dupe(u8, row_chars[row_pos + 1 .. options_end]));
+                    row_pos = options_end + 1;
+                    row_columns += 1;
+                } else {
+                    try chars.append(allocator, try allocator.dupe(u8, &.{row_chars[row_pos]}));
+                    row_pos += 1;
+                    row_columns += 1;
+                }
+            }
+
             if (columns == 0) {
-                columns = row_chars.len;
-            } else if (columns != row_chars.len) {
+                columns = row_columns;
+            } else if (columns != row_columns) {
                 return error.InvalidPbn;
             }
-            try image_colors.appendSlice(allocator, row_chars);
             rows += 1;
             pos = row_end + 1;
         }
 
+        return .{
+            .rows = rows,
+            .columns = columns,
+            .chars = try chars.toOwnedSlice(allocator),
+        };
+    }
+
+    pub fn toClues(self: Image, allocator: Allocator, colors: []const Color, background_color: []const u8) Error!struct { rows: Clues, columns: Clues } {
         var color_names = AutoHashMapUnmanaged(u8, [:0]const u8){};
         defer color_names.deinit(allocator);
-        try color_names.ensureTotalCapacity(allocator, @truncate(u32, colors.len));
+        try color_names.ensureTotalCapacity(allocator, @intCast(u32, colors.len));
         var bg_color_char: ?u8 = null;
         for (colors) |color| {
             if (color.char) |char| {
-                try color_names.put(allocator, char, color.name);
+                color_names.putAssumeCapacity(char, color.name);
                 if (mem.eql(u8, color.name, background_color)) {
                     bg_color_char = char;
                 }
             }
         }
 
-        var row_lines = try ArrayListUnmanaged(Line).initCapacity(allocator, rows);
-        for (0..rows) |i| {
+        var row_lines = try ArrayListUnmanaged(Line).initCapacity(allocator, self.rows);
+        for (0..self.rows) |i| {
             var counts = ArrayListUnmanaged(Count){};
             var run_color: ?u8 = null;
             var run_len: usize = 0;
-            for (0..columns) |j| {
-                const color = image_colors.items[columns * i + j];
+            for (0..self.columns) |j| {
+                const options = self.chars[self.columns * i + j];
+                if (options.len != 1) {
+                    return error.InvalidPbn;
+                }
+                const color = options[0];
                 if (color != run_color) {
                     if (run_len > 0 and run_color != bg_color_char) {
                         try counts.append(allocator, .{
@@ -547,15 +591,20 @@ pub const Image = struct {
                     .n = run_len,
                 });
             }
-            try row_lines.append(allocator, .{ .counts = counts.items });
+            row_lines.appendAssumeCapacity(.{ .counts = try counts.toOwnedSlice(allocator) });
         }
-        var column_lines = try ArrayListUnmanaged(Line).initCapacity(allocator, columns);
-        for (0..columns) |j| {
+
+        var column_lines = try ArrayListUnmanaged(Line).initCapacity(allocator, self.columns);
+        for (0..self.columns) |j| {
             var counts = ArrayListUnmanaged(Count){};
             var run_color: ?u8 = null;
             var run_len: usize = 0;
-            for (0..rows) |i| {
-                const color = image_colors.items[columns * i + j];
+            for (0..self.rows) |i| {
+                const options = self.chars[self.columns * i + j];
+                if (options.len != 1) {
+                    return error.InvalidPbn;
+                }
+                const color = options[0];
                 if (color != run_color) {
                     if (run_len > 0 and run_color != bg_color_char) {
                         try counts.append(allocator, .{
@@ -574,21 +623,40 @@ pub const Image = struct {
                     .n = run_len,
                 });
             }
-            try column_lines.append(allocator, .{ .counts = counts.items });
+            column_lines.appendAssumeCapacity(.{ .counts = try counts.toOwnedSlice(allocator) });
         }
 
         return .{
-            .rows = .{ .type = .rows, .lines = row_lines.items },
-            .columns = .{ .type = .columns, .lines = column_lines.items },
+            .rows = .{ .type = .rows, .lines = try row_lines.toOwnedSlice(allocator) },
+            .columns = .{ .type = .columns, .lines = try column_lines.toOwnedSlice(allocator) },
         };
     }
 
     fn parse(allocator: Allocator, node: *const c.xmlNode) !Image {
-        return .{ .text = try xml.nodeContent(allocator, node) };
+        const text = try xml.nodeContent(allocator, node);
+        defer allocator.free(text);
+        return try fromText(allocator, text);
     }
 
     fn write(self: Image, writer: *c.xmlTextWriter) !void {
-        try writeTextElement(writer, "image", self.text);
+        try xml.handle(c.xmlTextWriterStartElement(writer, "image"));
+        var row_iter = mem.window([]const u8, self.chars, self.columns, self.columns);
+        while (row_iter.next()) |row| {
+            try xml.handle(c.xmlTextWriterWriteString(writer, "|"));
+            for (row) |options| {
+                if (options.len == 1) {
+                    try xml.handle(c.xmlTextWriterWriteString(writer, &[_:0]u8{options[0]}));
+                } else {
+                    try xml.handle(c.xmlTextWriterWriteString(writer, "["));
+                    for (options) |char| {
+                        try xml.handle(c.xmlTextWriterWriteString(writer, &[_:0]u8{char}));
+                    }
+                    try xml.handle(c.xmlTextWriterWriteString(writer, "]"));
+                }
+            }
+            try xml.handle(c.xmlTextWriterWriteString(writer, "|\n"));
+        }
+        try xml.handle(c.xmlTextWriterEndElement(writer));
     }
 };
 

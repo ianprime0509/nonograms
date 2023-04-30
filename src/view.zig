@@ -14,6 +14,7 @@ const mem = std.mem;
 const Allocator = mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayListUnmanaged = std.ArrayListUnmanaged;
+const AutoHashMapUnmanaged = std.AutoHashMapUnmanaged;
 const StringHashMapUnmanaged = std.StringHashMapUnmanaged;
 const math = std.math;
 const oom = util.oom;
@@ -92,7 +93,7 @@ const State = struct {
         }
     }
 
-    fn toImage(self: State, allocator: Allocator, colors: []const pbn.Color) ![:0]u8 {
+    fn toImage(self: State, allocator: Allocator, colors: []const pbn.Color) !pbn.Image {
         var color_chars = StringHashMapUnmanaged(u8){};
         defer {
             var key_iterator = color_chars.keyIterator();
@@ -110,22 +111,23 @@ const State = struct {
             }
         }
 
-        var image = ArrayListUnmanaged(u8){};
-        var rows = mem.window(?Color, self.tile_colors, self.column_hints.len, self.column_hints.len);
-        while (rows.next()) |row| {
-            try image.append(allocator, '|');
+        var chars = try ArrayListUnmanaged([]const u8).initCapacity(allocator, self.tile_colors.len);
+        var row_iter = mem.window(?Color, self.tile_colors, self.column_hints.len, self.column_hints.len);
+        while (row_iter.next()) |row| {
             for (row) |maybe_color| {
                 if (maybe_color) |color| {
-                    try image.append(allocator, color_chars.get(&color.toHex()) orelse '.');
+                    const color_char = color_chars.get(&color.toHex()) orelse return error.UndefinedColor;
+                    chars.appendAssumeCapacity(try allocator.dupe(u8, &.{color_char}));
                 } else {
-                    try image.appendSlice(allocator, "[]");
+                    chars.appendAssumeCapacity(try allocator.dupe(u8, ""));
                 }
             }
-            try image.appendSlice(allocator, "|\n");
         }
-        const len = image.items.len;
-        try image.append(allocator, 0);
-        return (try image.toOwnedSlice(allocator))[0..len :0];
+        return .{
+            .rows = self.row_hints.len,
+            .columns = self.column_hints.len,
+            .chars = try chars.toOwnedSlice(allocator),
+        };
     }
 };
 
@@ -289,7 +291,7 @@ pub const View = extern struct {
             color.* = background_color;
         }
 
-        self.private().state = .{
+        const state = State{
             .tile_colors = tile_colors,
             .background_color = background_color,
             .default_color = default_color,
@@ -301,13 +303,43 @@ pub const View = extern struct {
             .max_column_hints = max_column_hints,
             .hover_tile = null,
         };
+
+        const saved_image = for (puzzle.solutions) |solution| {
+            if (solution.type == .saved) {
+                break solution.image;
+            }
+        } else null;
+        if (saved_image) |image| {
+            // We can't trust that the saved image is actually valid: in
+            // particular, it could have completely incorrect dimensions
+            if (image.rows == rows and image.columns == columns) {
+                var colors_by_char = AutoHashMapUnmanaged(u8, Color){};
+                defer colors_by_char.deinit(allocator);
+                for (puzzle.colors.values()) |color| {
+                    if (color.char) |char| {
+                        const converted = Color.fromPbn(color) catch continue;
+                        colors_by_char.put(allocator, char, converted) catch oom();
+                    }
+                }
+
+                for (image.chars, tile_colors) |options, *color| {
+                    switch (options.len) {
+                        0 => color.* = null,
+                        1 => color.* = colors_by_char.get(options[0]) orelse background_color,
+                        else => {},
+                    }
+                }
+            }
+        }
+
+        self.private().state = state;
         self.private().dimensions = null;
         self.private().drawing_area.queueDraw();
 
         self.private().color_picker.load(puzzle);
     }
 
-    pub fn getImage(self: *Self, allocator: Allocator, colors: []const pbn.Color) !?[:0]u8 {
+    pub fn getImage(self: *Self, allocator: Allocator, colors: []const pbn.Color) !?pbn.Image {
         const state = self.private().state orelse return null;
         return try state.toImage(allocator, colors);
     }
