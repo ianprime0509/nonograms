@@ -198,7 +198,7 @@ pub const View = extern struct {
         .{ .inc = 10, .weight = 1 },
     };
 
-    pub const getType = gobject.registerType(Self, .{
+    pub const getType = gobject.defineType(Self, .{
         .name = "NonogramsView",
     });
 
@@ -668,7 +668,7 @@ pub const ColorPicker = extern struct {
 
     const template = @embedFile("ui/color-picker.ui");
 
-    pub const getType = gobject.registerType(Self, .{
+    pub const getType = gobject.defineType(Self, .{
         .name = "NonogramsColorPicker",
     });
 
@@ -786,7 +786,7 @@ pub const ColorButton = extern struct {
     const template = @embedFile("ui/color-button.ui");
     const text_padding = 0.2;
 
-    pub const getType = gobject.registerType(Self, .{
+    pub const getType = gobject.defineType(Self, .{
         .name = "NonogramsColorButton",
     });
 

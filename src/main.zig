@@ -31,7 +31,7 @@ const Application = extern struct {
     pub const Parent = adw.Application;
     const Self = @This();
 
-    pub const getType = gobject.registerType(Self, .{
+    pub const getType = gobject.defineType(Self, .{
         .name = "NonogramsApplication",
     });
 
@@ -86,7 +86,7 @@ const ApplicationWindow = extern struct {
 
     const template = @embedFile("ui/window.ui");
 
-    pub const getType = gobject.registerType(ApplicationWindow, .{
+    pub const getType = gobject.defineType(ApplicationWindow, .{
         .name = "NonogramsApplicationWindow",
     });
 
