@@ -239,7 +239,7 @@ pub const View = extern struct {
 
         self.private().arena = ArenaAllocator.init(raw_c_allocator);
 
-        _ = gobject.signalConnectData(self.private().color_picker.as(gobject.Object), "color-selected", @ptrCast(gobject.Callback, &handleColorSelected), self, null, .{});
+        _ = self.private().color_picker.connectColorSelected(*Self, &handleColorSelected, self, .{});
     }
 
     fn dispose(self: *Self) callconv(.C) void {
@@ -671,7 +671,9 @@ pub const ColorPicker = extern struct {
     pub const getType = gobject.registerType(Self, .{
         .name = "NonogramsColorPicker",
     });
-    var color_select: c_uint = 0;
+
+    const color_selected = gobject.defineSignal("color-selected", *Self, &.{*glib.Variant}, void);
+    pub const connectColorSelected = color_selected.connect;
 
     pub fn new() *Self {
         return Self.newWith(.{});
@@ -740,12 +742,7 @@ pub const ColorPicker = extern struct {
 
         const ColorTuple = struct { f64, f64, f64 };
         const color: ?ColorTuple = if (button.getSelectionColor()) |color| .{ color.r, color.g, color.b } else null;
-        var self_value = gobject.Value.newFrom(self);
-        defer self_value.unset();
-        var v_value = gobject.Value.newFrom(glib.Variant.newFrom(color));
-        defer v_value.unset();
-        const params = [_]gobject.Value{ self_value, v_value };
-        gobject.signalEmitv(&params, color_select, 0, null);
+        color_selected.emit(self, null, .{glib.Variant.newFrom(color)}, null);
     }
 
     pub usingnamespace Parent.Methods(Self);
@@ -762,8 +759,7 @@ pub const ColorPicker = extern struct {
             class.implementFinalize(&finalize);
             class.setTemplateFromSlice(template);
             class.bindTemplateChild("box", .{ .private = true });
-            var param_types = [_]gobject.Type{gobject.typeFor(*glib.Variant)};
-            color_select = gobject.signalNewv("color-selected", getType(), .{}, null, null, null, null, gobject.typeFor(void), 1, &param_types);
+            color_selected.register(.{});
         }
 
         pub usingnamespace Parent.Class.Methods(Class);
