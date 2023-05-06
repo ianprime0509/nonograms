@@ -179,7 +179,7 @@ pub const View = extern struct {
     pub const Parent = gtk.Widget;
     const Self = @This();
 
-    pub const Private = struct {
+    const Private = struct {
         drawing_area: *gtk.DrawingArea,
         color_picker: *ColorPicker,
         draw_start: Point,
@@ -188,7 +188,7 @@ pub const View = extern struct {
         state: ?State,
         arena: ArenaAllocator,
 
-        pub var offset: c_int = 0;
+        var offset: c_int = 0;
     };
 
     const template = @embedFile("ui/view.ui");
@@ -200,13 +200,17 @@ pub const View = extern struct {
 
     pub const getType = gobject.defineType(Self, .{
         .name = "NonogramsView",
+        .instanceInit = &init,
+        .classInit = &Class.init,
+        .parent_class = &Class.parent,
+        .private = .{ .Type = Private, .offset = &Private.offset },
     });
 
     pub fn new() *Self {
         return Self.newWith(.{});
     }
 
-    pub fn init(self: *Self, _: *Class) callconv(.C) void {
+    fn init(self: *Self, _: *Class) callconv(.C) void {
         self.initTemplate();
         self.setLayoutManager(gtk.BinLayout.new().as(gtk.LayoutManager));
 
@@ -244,12 +248,12 @@ pub const View = extern struct {
 
     fn dispose(self: *Self) callconv(.C) void {
         while (self.getFirstChild()) |child| child.unparent();
-        Class.parent.?.callDispose(self.as(gobject.Object));
+        Class.parent.callDispose(self.as(gobject.Object));
     }
 
     fn finalize(self: *Self) callconv(.C) void {
         self.private().arena.deinit();
-        Class.parent.?.callFinalize(self.as(gobject.Object));
+        Class.parent.callFinalize(self.as(gobject.Object));
     }
 
     pub fn load(self: *Self, puzzle: pbn.Puzzle) void {
@@ -629,21 +633,29 @@ pub const View = extern struct {
         }
     }
 
+    fn private(self: *Self) *Private {
+        return gobject.impl_helpers.getPrivate(self, Private, Private.offset);
+    }
+
     pub usingnamespace Parent.Methods(Self);
 
     pub const Class = extern struct {
         parent_class: Parent.Class,
 
-        pub var parent: ?*Parent.Class = null;
+        var parent: *Parent.Class = undefined;
 
         pub const Instance = Self;
 
-        pub fn init(class: *Class) callconv(.C) void {
+        fn init(class: *Class) callconv(.C) void {
             class.implementDispose(&dispose);
             class.implementFinalize(&finalize);
             class.setTemplateFromSlice(template);
-            class.bindTemplateChild("drawing_area", .{ .private = true });
-            class.bindTemplateChild("color_picker", .{ .private = true });
+            class.bindTemplateChildPrivate("drawing_area", .{});
+            class.bindTemplateChildPrivate("color_picker", .{});
+        }
+
+        fn bindTemplateChildPrivate(class: *Class, comptime name: [:0]const u8, comptime options: gtk.BindTemplateChildOptions) void {
+            gtk.impl_helpers.bindTemplateChildPrivate(class, name, Private, Private.offset, options);
         }
 
         pub usingnamespace Parent.Class.Methods(Class);
@@ -657,19 +669,23 @@ pub const ColorPicker = extern struct {
     pub const Parent = gtk.Widget;
     const Self = @This();
 
-    pub const Private = struct {
+    const Private = struct {
         box: *gtk.Box,
         color: Color,
         buttons: []const *ColorButton,
         arena: ArenaAllocator,
 
-        pub var offset: c_int = 0;
+        var offset: c_int = 0;
     };
 
     const template = @embedFile("ui/color-picker.ui");
 
     pub const getType = gobject.defineType(Self, .{
         .name = "NonogramsColorPicker",
+        .instanceInit = &init,
+        .classInit = &Class.init,
+        .parent_class = &Class.parent,
+        .private = .{ .Type = Private, .offset = &Private.offset },
     });
 
     const color_selected = gobject.defineSignal("color-selected", *Self, &.{*glib.Variant}, void);
@@ -679,7 +695,7 @@ pub const ColorPicker = extern struct {
         return Self.newWith(.{});
     }
 
-    pub fn init(self: *Self, _: *Class) callconv(.C) void {
+    fn init(self: *Self, _: *Class) callconv(.C) void {
         self.initTemplate();
         self.setLayoutManager(gtk.BinLayout.new().as(gtk.LayoutManager));
 
@@ -689,12 +705,12 @@ pub const ColorPicker = extern struct {
 
     fn dispose(self: *Self) callconv(.C) void {
         while (self.getFirstChild()) |child| child.unparent();
-        Class.parent.?.callDispose(self.as(gobject.Object));
+        Class.parent.callDispose(self.as(gobject.Object));
     }
 
     fn finalize(self: *Self) callconv(.C) void {
         self.private().arena.deinit();
-        Class.parent.?.callFinalize(self.as(gobject.Object));
+        Class.parent.callFinalize(self.as(gobject.Object));
     }
 
     pub fn load(self: *Self, puzzle: pbn.Puzzle) void {
@@ -745,21 +761,29 @@ pub const ColorPicker = extern struct {
         color_selected.emit(self, null, .{glib.Variant.newFrom(color)}, null);
     }
 
+    fn private(self: *Self) *Private {
+        return gobject.impl_helpers.getPrivate(self, Private, Private.offset);
+    }
+
     pub usingnamespace Parent.Methods(Self);
 
     pub const Class = extern struct {
         parent_class: Parent.Class,
 
-        pub var parent: ?*Parent.Class = null;
+        var parent: *Parent.Class = undefined;
 
         pub const Instance = Self;
 
-        pub fn init(class: *Class) callconv(.C) void {
+        fn init(class: *Class) callconv(.C) void {
             class.implementDispose(&dispose);
             class.implementFinalize(&finalize);
             class.setTemplateFromSlice(template);
-            class.bindTemplateChild("box", .{ .private = true });
+            class.bindTemplateChildPrivate("box", .{});
             color_selected.register(.{});
+        }
+
+        fn bindTemplateChildPrivate(class: *Class, comptime name: [:0]const u8, comptime options: gtk.BindTemplateChildOptions) void {
+            gtk.impl_helpers.bindTemplateChildPrivate(class, name, Private, Private.offset, options);
         }
 
         pub usingnamespace Parent.Class.Methods(Class);
@@ -773,14 +797,14 @@ pub const ColorButton = extern struct {
     pub const Parent = gtk.ToggleButton;
     const Self = @This();
 
-    pub const Private = struct {
+    const Private = struct {
         toggle_button: *gtk.ToggleButton,
         drawing_area: *gtk.DrawingArea,
         color: Color,
         x_color: ?Color,
         key_number: usize,
 
-        pub var offset: c_int = 0;
+        var offset: c_int = 0;
     };
 
     const template = @embedFile("ui/color-button.ui");
@@ -788,6 +812,9 @@ pub const ColorButton = extern struct {
 
     pub const getType = gobject.defineType(Self, .{
         .name = "NonogramsColorButton",
+        .instanceInit = &init,
+        .classInit = &Class.init,
+        .private = .{ .Type = Private, .offset = &Private.offset },
     });
 
     pub fn new(color: Color, x_color: ?Color, key_number: usize) *Self {
@@ -798,7 +825,7 @@ pub const ColorButton = extern struct {
         return self;
     }
 
-    pub fn init(self: *Self, _: *Class) callconv(.C) void {
+    fn init(self: *Self, _: *Class) callconv(.C) void {
         self.initTemplate();
         self.private().drawing_area.setDrawFunc(&draw, self, null);
     }
@@ -862,18 +889,24 @@ pub const ColorButton = extern struct {
         pangocairo.showLayout(cr, layout);
     }
 
+    fn private(self: *Self) *Private {
+        return gobject.impl_helpers.getPrivate(self, Private, Private.offset);
+    }
+
     pub usingnamespace Parent.Methods(Self);
 
     pub const Class = extern struct {
         parent_class: Parent.Class,
 
-        pub var parent: ?*Parent.Class = null;
-
         pub const Instance = Self;
 
-        pub fn init(class: *Class) callconv(.C) void {
+        fn init(class: *Class) callconv(.C) void {
             class.setTemplateFromSlice(template);
-            class.bindTemplateChild("drawing_area", .{ .private = true });
+            class.bindTemplateChildPrivate("drawing_area", .{});
+        }
+
+        fn bindTemplateChildPrivate(class: *Class, comptime name: [:0]const u8, comptime options: gtk.BindTemplateChildOptions) void {
+            gtk.impl_helpers.bindTemplateChildPrivate(class, name, Private, Private.offset, options);
         }
 
         pub usingnamespace Parent.Class.Methods(Class);

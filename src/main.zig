@@ -33,6 +33,7 @@ const Application = extern struct {
 
     pub const getType = gobject.defineType(Self, .{
         .name = "NonogramsApplication",
+        .classInit = &Class.init,
     });
 
     pub fn new() *Self {
@@ -54,7 +55,7 @@ const Application = extern struct {
 
         pub const Instance = Self;
 
-        pub fn init(class: *Class) callconv(.C) void {
+        fn init(class: *Class) callconv(.C) void {
             class.implementActivate(&Self.activateImpl);
         }
 
@@ -70,7 +71,7 @@ const ApplicationWindow = extern struct {
     pub const Implements = Parent.Implements;
     const Self = @This();
 
-    pub const Private = struct {
+    const Private = struct {
         window_title: *adw.WindowTitle,
         toast_overlay: *adw.ToastOverlay,
         stack: *gtk.Stack,
@@ -81,20 +82,24 @@ const ApplicationWindow = extern struct {
         puzzle_set_uri: ?[:0]u8,
         puzzle_index: ?usize,
 
-        pub var offset: c_int = 0;
+        var offset: c_int = 0;
     };
 
     const template = @embedFile("ui/window.ui");
 
     pub const getType = gobject.defineType(ApplicationWindow, .{
         .name = "NonogramsApplicationWindow",
+        .instanceInit = &init,
+        .classInit = &Class.init,
+        .parent_class = &Class.parent,
+        .private = .{ .Type = Private, .offset = &Private.offset },
     });
 
     pub fn new(app: *Application) *Self {
         return Self.newWith(.{ .application = app });
     }
 
-    pub fn init(self: *Self, _: *Class) callconv(.C) void {
+    fn init(self: *Self, _: *Class) callconv(.C) void {
         self.initTemplate();
 
         const about = gio.SimpleAction.new("about", null);
@@ -109,7 +114,7 @@ const ApplicationWindow = extern struct {
 
         // The function setFocus by itself is ambiguous because it could be
         // either gtk_window_set_focus or gtk_root_set_focus
-        gtk.Window.OwnMethods(Self).setFocus(self, self.private().view.private().drawing_area.as(gtk.Widget));
+        gtk.Window.OwnMethods(Self).setFocus(self, self.private().view.as(gtk.Widget));
 
         // Load an initial puzzle
         const file = gio.File.newForPath("9381.pbn");
@@ -119,7 +124,7 @@ const ApplicationWindow = extern struct {
 
     fn finalize(self: *Self) callconv(.C) void {
         self.deinitPuzzleSet();
-        Class.parent.?.callFinalize(self.as(gobject.Object));
+        Class.parent.callFinalize(self.as(gobject.Object));
     }
 
     fn openFile(self: *Self, file: *gio.File) void {
@@ -246,25 +251,33 @@ const ApplicationWindow = extern struct {
         self.loadPuzzle(puzzle_set.puzzles[index]);
     }
 
+    fn private(self: *Self) *Private {
+        return gobject.impl_helpers.getPrivate(self, Private, Private.offset);
+    }
+
     pub usingnamespace Parent.Methods(Self);
     pub usingnamespace gio.ActionMap.Methods(Self);
 
     pub const Class = extern struct {
         parent_class: Parent.Class,
 
-        pub var parent: ?*Parent.Class = null;
+        var parent: *Parent.Class = undefined;
 
         pub const Instance = Self;
 
-        pub fn init(class: *Class) callconv(.C) void {
+        fn init(class: *Class) callconv(.C) void {
             class.implementFinalize(&finalize);
             class.setTemplateFromSlice(template);
-            class.bindTemplateChild("window_title", .{ .private = true });
-            class.bindTemplateChild("toast_overlay", .{ .private = true });
-            class.bindTemplateChild("stack", .{ .private = true });
-            class.bindTemplateChild("puzzle_set_title", .{ .private = true });
-            class.bindTemplateChild("puzzle_list", .{ .private = true });
-            class.bindTemplateChild("view", .{ .private = true });
+            class.bindTemplateChildPrivate("window_title", .{});
+            class.bindTemplateChildPrivate("toast_overlay", .{});
+            class.bindTemplateChildPrivate("stack", .{});
+            class.bindTemplateChildPrivate("puzzle_set_title", .{});
+            class.bindTemplateChildPrivate("puzzle_list", .{});
+            class.bindTemplateChildPrivate("view", .{});
+        }
+
+        fn bindTemplateChildPrivate(class: *Class, comptime name: [:0]const u8, comptime options: gtk.BindTemplateChildOptions) void {
+            gtk.impl_helpers.bindTemplateChildPrivate(class, name, Private, Private.offset, options);
         }
 
         pub usingnamespace Parent.Class.Methods(Class);
