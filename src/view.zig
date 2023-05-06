@@ -531,8 +531,8 @@ pub const View = extern struct {
         self.private().drawing_area.queueDraw();
     }
 
-    fn handleKeyPressed(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, self: *Self) callconv(.C) bool {
-        const state = &(self.private().state orelse return false);
+    fn handleKeyPressed(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, self: *Self) callconv(.C) c_int {
+        const state = &(self.private().state orelse return 0);
         switch (keyval) {
             gdk.KEY_Up => {
                 state.moveHoverTile(-1, 0);
@@ -565,9 +565,9 @@ pub const View = extern struct {
             gdk.KEY_9 => self.handleColorKeyPressed(9),
             gdk.KEY_0 => self.handleColorKeyPressed(0),
             gdk.KEY_space => self.handleKeyboardDrawStart(),
-            else => return false,
+            else => return 0,
         }
-        return true;
+        return 1;
     }
 
     fn handleKeyReleased(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, self: *Self) callconv(.C) void {
@@ -719,7 +719,7 @@ pub const ColorPicker = extern struct {
             self.private().box.append(button.as(gtk.Widget));
             last_button = button.as(gtk.ToggleButton);
             if (mem.eql(u8, color.name, puzzle.default_color)) {
-                button.setActive(true);
+                button.setActive(1);
             }
             _ = button.connectToggled(*Self, &handleButtonToggled, self, .{});
             buttons.append(allocator, button) catch oom();
@@ -731,12 +731,12 @@ pub const ColorPicker = extern struct {
     pub fn activateButton(self: *Self, n: usize) void {
         const buttons = self.private().buttons;
         if (n < buttons.len) {
-            buttons[n].setActive(true);
+            buttons[n].setActive(1);
         }
     }
 
     fn handleButtonToggled(button: *ColorButton, self: *Self) callconv(.C) void {
-        if (!button.getActive()) {
+        if (button.getActive() == 0) {
             return;
         }
 

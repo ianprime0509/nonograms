@@ -152,7 +152,7 @@ const ApplicationWindow = extern struct {
         for (puzzle_set.puzzles) |puzzle| {
             const action_row = adw.ActionRow.new();
             action_row.setTitle(puzzle.title orelse "Untitled");
-            action_row.setActivatable(true);
+            action_row.setActivatable(1);
             puzzle_list.append(action_row.as(gtk.Widget));
         }
         self.private().stack.setVisibleChildName("puzzle_selector");
@@ -199,19 +199,19 @@ const ApplicationWindow = extern struct {
         self.openFile(file);
     }
 
-    fn handleCloseRequest(self: *Self, _: ?*anyopaque) callconv(.C) bool {
+    fn handleCloseRequest(self: *Self, _: ?*anyopaque) callconv(.C) c_int {
         const puzzle_set_path = path: {
-            const uri = self.private().puzzle_set_uri orelse return false;
+            const uri = self.private().puzzle_set_uri orelse return 0;
             const file = gio.File.newForUri(uri);
             defer file.unref();
-            break :path mem.sliceTo(file.getPath() orelse return false, 0);
+            break :path mem.sliceTo(file.getPath() orelse return 0, 0);
         };
         defer glib.free(puzzle_set_path.ptr);
-        const puzzle_index = self.private().puzzle_index orelse return false;
+        const puzzle_index = self.private().puzzle_index orelse return 0;
 
-        var puzzle_set = self.private().puzzle_set orelse return false;
+        var puzzle_set = self.private().puzzle_set orelse return 0;
         var puzzle = puzzle_set.puzzles[puzzle_index];
-        const image = (self.private().view.getImage(c_allocator, puzzle.colors.values()) catch return false) orelse return false;
+        const image = (self.private().view.getImage(c_allocator, puzzle.colors.values()) catch return 0) orelse return 0;
         defer image.deinit(c_allocator);
         var solutions = ArrayListUnmanaged(pbn.Solution).initCapacity(c_allocator, puzzle.solutions.len) catch oom();
         defer solutions.deinit(c_allocator);
@@ -231,9 +231,9 @@ const ApplicationWindow = extern struct {
         puzzles[puzzle_index] = puzzle;
         puzzle_set.puzzles = puzzles;
 
-        puzzle_set.writeFile(puzzle_set_path) catch return false;
+        puzzle_set.writeFile(puzzle_set_path) catch return 0;
 
-        return false;
+        return 0;
     }
 
     fn handlePuzzleRowActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Self) callconv(.C) void {
