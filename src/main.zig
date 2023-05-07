@@ -199,24 +199,40 @@ const ApplicationWindow = extern struct {
 
     fn handleOpenResponse(chooser: *gtk.FileChooserNative, _: c_int, self: *Self) callconv(.C) void {
         defer chooser.unref();
+        self.saveCurrentImage();
         const file = chooser.getFile() orelse return;
         defer file.unref();
         self.openFile(file);
     }
 
     fn handleCloseRequest(self: *Self, _: ?*anyopaque) callconv(.C) c_int {
+        self.saveCurrentImage();
+        return 0;
+    }
+
+    fn handlePuzzleRowActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Self) callconv(.C) void {
+        const puzzle_set = self.private().puzzle_set orelse return;
+        const index = @intCast(usize, row.getIndex());
+        if (index >= puzzle_set.puzzles.len) {
+            return;
+        }
+        self.private().puzzle_index = index;
+        self.loadPuzzle(puzzle_set.puzzles[index]);
+    }
+
+    fn saveCurrentImage(self: *Self) void {
         const puzzle_set_path = path: {
-            const uri = self.private().puzzle_set_uri orelse return 0;
+            const uri = self.private().puzzle_set_uri orelse return;
             const file = gio.File.newForUri(uri);
             defer file.unref();
-            break :path mem.sliceTo(file.getPath() orelse return 0, 0);
+            break :path mem.sliceTo(file.getPath() orelse return, 0);
         };
         defer glib.free(puzzle_set_path.ptr);
-        const puzzle_index = self.private().puzzle_index orelse return 0;
+        const puzzle_index = self.private().puzzle_index orelse return;
 
-        var puzzle_set = self.private().puzzle_set orelse return 0;
+        var puzzle_set = self.private().puzzle_set orelse return;
         var puzzle = puzzle_set.puzzles[puzzle_index];
-        const image = (self.private().view.getImage(c_allocator, puzzle.colors.values()) catch return 0) orelse return 0;
+        const image = (self.private().view.getImage(c_allocator, puzzle.colors.values()) catch return) orelse return;
         defer image.deinit(c_allocator);
         var solutions = ArrayListUnmanaged(pbn.Solution).initCapacity(c_allocator, puzzle.solutions.len) catch oom();
         defer solutions.deinit(c_allocator);
@@ -236,19 +252,7 @@ const ApplicationWindow = extern struct {
         puzzles[puzzle_index] = puzzle;
         puzzle_set.puzzles = puzzles;
 
-        puzzle_set.writeFile(puzzle_set_path) catch return 0;
-
-        return 0;
-    }
-
-    fn handlePuzzleRowActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Self) callconv(.C) void {
-        const puzzle_set = self.private().puzzle_set orelse return;
-        const index = @intCast(usize, row.getIndex());
-        if (index >= puzzle_set.puzzles.len) {
-            return;
-        }
-        self.private().puzzle_index = index;
-        self.loadPuzzle(puzzle_set.puzzles[index]);
+        puzzle_set.writeFile(puzzle_set_path) catch return;
     }
 
     fn private(self: *Self) *Private {
