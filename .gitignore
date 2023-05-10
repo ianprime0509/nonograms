@@ -1,3 +1,4 @@
 zig-cache
 zig-out
 *.pbn
+!puzzles/*.pbn

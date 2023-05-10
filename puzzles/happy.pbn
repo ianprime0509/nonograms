@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<puzzleset>
+  <source>webpbn.com</source>
+  <puzzle defaultcolor="black" backgroundcolor="white">
+    <title>In a cheerful mood</title>
+    <author>Ian Johnson</author>
+    <copyright>(c) Copyright 2023 Ian Johnson (CC-0, public domain)</copyright>
+    <description>Be happy!</description>
+    <color name="black" char="X">000000</color>
+    <color name="white" char=".">FFFFFF</color>
+    <color name="yellow" char="@">AAAA5A</color>
+    <clues type="rows">
+      <line>
+        <count color="black">4</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">4</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">6</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">2</count>
+        <count color="black">1</count>
+        <count color="yellow">2</count>
+        <count color="black">1</count>
+        <count color="yellow">2</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">8</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">1</count>
+        <count color="black">1</count>
+        <count color="yellow">4</count>
+        <count color="black">1</count>
+        <count color="yellow">1</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">2</count>
+        <count color="black">4</count>
+        <count color="yellow">2</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">6</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">4</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">4</count>
+      </line>
+    </clues>
+    <clues type="columns">
+      <line>
+        <count color="black">4</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">4</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">3</count>
+        <count color="black">1</count>
+        <count color="yellow">2</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">2</count>
+        <count color="black">1</count>
+        <count color="yellow">2</count>
+        <count color="black">1</count>
+        <count color="yellow">2</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">5</count>
+        <count color="black">1</count>
+        <count color="yellow">2</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">5</count>
+        <count color="black">1</count>
+        <count color="yellow">2</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">2</count>
+        <count color="black">1</count>
+        <count color="yellow">2</count>
+        <count color="black">1</count>
+        <count color="yellow">2</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">3</count>
+        <count color="black">1</count>
+        <count color="yellow">2</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="yellow">4</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">4</count>
+      </line>
+    </clues>
+    <solution type="goal">
+      <image>
+        |...XXXX...|
+        |..X@@@@X..|
+        |.X@@@@@@X.|
+        |X@@X@@X@@X|
+        |X@@@@@@@@X|
+        |X@X@@@@X@X|
+        |X@@XXXX@@X|
+        |.X@@@@@@X.|
+        |..X@@@@X..|
+        |...XXXX...|
+      </image>
+    </solution>
+  </puzzle>
+</puzzleset>
