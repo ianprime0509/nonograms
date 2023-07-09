@@ -296,9 +296,9 @@ pub const Color = struct {
     pub fn toFloatRgb(self: Color) error{InvalidColor}!struct { r: f64, g: f64, b: f64 } {
         const rgb = try self.toRgb();
         return .{
-            .r = @intToFloat(f64, rgb.r) / 255,
-            .g = @intToFloat(f64, rgb.g) / 255,
-            .b = @intToFloat(f64, rgb.b) / 255,
+            .r = @as(f64, @floatFromInt(rgb.r)) / 255,
+            .g = @as(f64, @floatFromInt(rgb.g)) / 255,
+            .b = @as(f64, @floatFromInt(rgb.b)) / 255,
         };
     }
 
@@ -551,7 +551,7 @@ pub const Image = struct {
     pub fn toClues(self: Image, allocator: Allocator, colors: []const Color, background_color: []const u8) Error!struct { rows: Clues, columns: Clues } {
         var color_names = AutoHashMapUnmanaged(u8, [:0]const u8){};
         defer color_names.deinit(allocator);
-        try color_names.ensureTotalCapacity(allocator, @intCast(u32, colors.len));
+        try color_names.ensureTotalCapacity(allocator, @intCast(colors.len));
         var bg_color_char: ?u8 = null;
         for (colors) |color| {
             if (color.char) |char| {

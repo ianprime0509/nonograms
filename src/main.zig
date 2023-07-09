@@ -21,8 +21,8 @@ pub fn main() !void {
     _ = ColorButton.getType();
     _ = ColorPicker.getType();
     _ = View.getType();
-    const status = Application.new().run(@intCast(c_int, std.os.argv.len), std.os.argv.ptr);
-    std.os.exit(@intCast(u8, status));
+    const status = Application.new().run(@intCast(std.os.argv.len), std.os.argv.ptr);
+    std.os.exit(@intCast(status));
 }
 
 const Application = extern struct {
@@ -212,7 +212,7 @@ const ApplicationWindow = extern struct {
 
     fn handlePuzzleRowActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Self) callconv(.C) void {
         const puzzle_set = self.private().puzzle_set orelse return;
-        const index = @intCast(usize, row.getIndex());
+        const index: usize = @intCast(row.getIndex());
         if (index >= puzzle_set.puzzles.len) {
             return;
         }

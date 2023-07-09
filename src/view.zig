@@ -37,9 +37,9 @@ const Color = struct {
     fn toHex(self: Color) [6]u8 {
         var buf: [6]u8 = undefined;
         _ = fmt.bufPrint(&buf, "{X:0>2}{X:0>2}{X:0>2}", .{
-            @floatToInt(u8, @round(self.r * 255)),
-            @floatToInt(u8, @round(self.g * 255)),
-            @floatToInt(u8, @round(self.b * 255)),
+            @as(u8, @intFromFloat(@round(self.r * 255))),
+            @as(u8, @intFromFloat(@round(self.g * 255))),
+            @as(u8, @intFromFloat(@round(self.b * 255))),
         }) catch unreachable;
         return buf;
     }
@@ -68,14 +68,14 @@ const State = struct {
             return;
         };
         if (drow < 0) {
-            hover_tile.row -|= @intCast(usize, -drow);
+            hover_tile.row -|= @intCast(-drow);
         } else {
-            hover_tile.row +|= @intCast(usize, drow);
+            hover_tile.row +|= @intCast(drow);
         }
         if (dcolumn < 0) {
-            hover_tile.column -|= @intCast(usize, -dcolumn);
+            hover_tile.column -|= @intCast(-dcolumn);
         } else {
-            hover_tile.column +|= @intCast(usize, dcolumn);
+            hover_tile.column +|= @intCast(dcolumn);
         }
         self.hover_tile = .{
             .row = math.clamp(hover_tile.row, self.max_column_hints, self.max_column_hints + self.row_hints.len - 1),
@@ -102,7 +102,7 @@ const State = struct {
             }
             color_chars.deinit(allocator);
         }
-        try color_chars.ensureTotalCapacity(allocator, @truncate(u32, colors.len));
+        try color_chars.ensureTotalCapacity(allocator, @intCast(colors.len));
         for (colors) |color| {
             if (color.char) |char| {
                 const value = try ascii.allocUpperString(allocator, color.value);
@@ -154,16 +154,16 @@ const Dimensions = struct {
             return null;
         } else {
             return .{
-                .row = @floatToInt(usize, rel_y / (self.tile_size + gap_frac * self.tile_size)),
-                .column = @floatToInt(usize, rel_x / (self.tile_size + gap_frac * self.tile_size)),
+                .row = @intFromFloat(rel_y / (self.tile_size + gap_frac * self.tile_size)),
+                .column = @intFromFloat(rel_x / (self.tile_size + gap_frac * self.tile_size)),
             };
         }
     }
 
     fn tilePosition(self: Dimensions, row: usize, column: usize) Point {
         return .{
-            .x = self.board_pos.x + @intToFloat(f64, column) * (self.tile_size + gap_frac * self.tile_size),
-            .y = self.board_pos.y + @intToFloat(f64, row) * (self.tile_size + gap_frac * self.tile_size),
+            .x = self.board_pos.x + @as(f64, @floatFromInt(column)) * (self.tile_size + gap_frac * self.tile_size),
+            .y = self.board_pos.y + @as(f64, @floatFromInt(row)) * (self.tile_size + gap_frac * self.tile_size),
         };
     }
 };
@@ -349,7 +349,7 @@ pub const View = extern struct {
     }
 
     fn draw(_: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, user_data: ?*anyopaque) callconv(.C) void {
-        const self = @ptrCast(*Self, @alignCast(@alignOf(*Self), user_data));
+        const self: *Self = @ptrCast(@alignCast(user_data));
         const state = self.private().state orelse return;
         const dims = self.private().dimensions orelse blk: {
             const computed = computeDimensions(state, width, height);
@@ -372,11 +372,11 @@ pub const View = extern struct {
 
         const layout = pangocairo.createLayout(cr);
         defer layout.unref();
-        const pango_scale = @intToFloat(f64, pango.SCALE);
+        const pango_scale: f64 = @floatFromInt(pango.SCALE);
         const font = pango.FontDescription.new();
         defer font.free();
         font.setFamilyStatic("Sans");
-        font.setSize(@floatToInt(c_int, pango_scale * dims.tile_size / 2));
+        font.setSize(@intFromFloat(pango_scale * dims.tile_size / 2));
         layout.setFontDescription(font);
         for (state.row_hints, 0..) |row, i| {
             for (row, 0..) |hint, n| {
@@ -401,9 +401,9 @@ pub const View = extern struct {
         var h: c_int = undefined;
         layout.getSize(&w, &h);
 
-        const pango_scale = @intToFloat(f64, pango.SCALE);
-        const x = pos.x + 0.5 * dims.tile_size - @intToFloat(f64, w) / pango_scale / 2;
-        const y = pos.y + 0.5 * dims.tile_size - @intToFloat(f64, h) / pango_scale / 2;
+        const pango_scale: f64 = @floatFromInt(pango.SCALE);
+        const x = pos.x + 0.5 * dims.tile_size - @as(f64, @floatFromInt(w)) / pango_scale / 2;
+        const y = pos.y + 0.5 * dims.tile_size - @as(f64, @floatFromInt(h)) / pango_scale / 2;
         cr.moveTo(x, y);
         pangocairo.showLayout(cr, layout);
     }
@@ -604,10 +604,10 @@ pub const View = extern struct {
     }
 
     fn computeDimensions(state: State, width_int: c_int, height_int: c_int) Dimensions {
-        const width = @intToFloat(f64, width_int);
-        const height = @intToFloat(f64, height_int);
-        const rows = @intToFloat(f64, state.row_hints.len + state.max_column_hints);
-        const columns = @intToFloat(f64, state.column_hints.len + state.max_row_hints);
+        const width: f64 = @floatFromInt(width_int);
+        const height: f64 = @floatFromInt(height_int);
+        const rows: f64 = @floatFromInt(state.row_hints.len + state.max_column_hints);
+        const columns: f64 = @floatFromInt(state.column_hints.len + state.max_row_hints);
 
         const max_tile_height = height / (rows + Dimensions.gap_frac * rows + Dimensions.gap_frac);
         const max_tile_width = width / (columns + Dimensions.gap_frac * columns + Dimensions.gap_frac);
@@ -835,9 +835,9 @@ pub const ColorButton = extern struct {
     }
 
     fn draw(_: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, user_data: ?*anyopaque) callconv(.C) void {
-        const self = @ptrCast(*Self, @alignCast(@alignOf(*Self), user_data));
-        const w = @intToFloat(f64, width);
-        const h = @intToFloat(f64, height);
+        const self: *Self = @ptrCast(@alignCast(user_data));
+        const w: f64 = @floatFromInt(width);
+        const h: f64 = @floatFromInt(height);
 
         const color = self.private().color;
         cr.setSourceRgb(color.r, color.g, color.b);
@@ -857,11 +857,11 @@ pub const ColorButton = extern struct {
 
         const layout = pangocairo.createLayout(cr);
         defer layout.unref();
-        const pango_scale = @intToFloat(f64, pango.SCALE);
+        const pango_scale: f64 = @floatFromInt(pango.SCALE);
         const font = pango.FontDescription.new();
         defer font.free();
         font.setFamilyStatic("Sans");
-        font.setSize(@floatToInt(c_int, pango_scale * h / 4));
+        font.setSize(@intFromFloat(pango_scale * h / 4));
         layout.setFontDescription(font);
 
         var buf: [32]u8 = undefined;
@@ -870,8 +870,8 @@ pub const ColorButton = extern struct {
         var tw: c_int = undefined;
         var th: c_int = undefined;
         layout.getSize(&tw, &th);
-        const twf = @intToFloat(f64, tw) / pango_scale;
-        const thf = @intToFloat(f64, th) / pango_scale;
+        const twf = @as(f64, @floatFromInt(tw)) / pango_scale;
+        const thf = @as(f64, @floatFromInt(th)) / pango_scale;
         const tx = w - (1 + text_padding) * twf;
         const ty = w - (1 + text_padding) * thf;
         // Text background (to ensure contrast)
