@@ -1,6 +1,3 @@
-[submodule "lib/zig-libxml2"]
-	path = lib/zig-libxml2
-	url = git@github.com:mitchellh/zig-libxml2.git
 [submodule "lib/zig-gobject"]
 	path = lib/zig-gobject
 	url = https://github.com/ianprime0509/zig-gobject.git

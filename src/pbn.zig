@@ -2,10 +2,11 @@
 // The triddler puzzle type is not supported.
 
 const std = @import("std");
-const c = @import("c.zig");
-const xml = @import("xml.zig");
+const xml = @import("xml");
 const ascii = std.ascii;
 const fmt = std.fmt;
+const fs = std.fs;
+const io = std.io;
 const mem = std.mem;
 const meta = std.meta;
 const Allocator = mem.Allocator;
@@ -16,7 +17,7 @@ const EnumArray = std.EnumArray;
 const StringArrayHashMapUnmanaged = std.StringArrayHashMapUnmanaged;
 
 pub const Error = error{InvalidPbn} || Allocator.Error;
-pub const WriteError = error{WriteFailed};
+pub const WriteError = fs.File.OpenError || fs.File.SyncError || fs.File.WriteError;
 
 pub const PuzzleSet = struct {
     puzzles: []const Puzzle,
@@ -28,33 +29,71 @@ pub const PuzzleSet = struct {
     copyright: ?[:0]const u8,
     arena: ArenaAllocator,
 
-    pub fn parseBytes(allocator: Allocator, bytes: []const u8, url: [:0]const u8) Error!PuzzleSet {
-        const doc = xml.parseBytes(bytes, url) catch return error.InvalidPbn;
-        defer c.xmlFreeDoc(doc);
-        return try parseDoc(allocator, doc);
+    pub fn parseBytes(allocator: Allocator, bytes: []const u8) Error!PuzzleSet {
+        var stream = std.io.fixedBufferStream(bytes);
+        var r = xml.reader(allocator, stream.reader(), xml.encoding.Utf8Decoder{}, .{
+            // Normalization doesn't matter for anything we're doing
+            .enable_normalization = false,
+            // The PBN format does not use namespaces
+            .namespace_aware = false,
+        });
+        defer r.deinit();
+        return parseXml(allocator, &r) catch |err| switch (err) {
+            // TODO: https://github.com/ianprime0509/zig-xml/issues/21
+            error.CannotUndeclareNsPrefix,
+            error.InvalidNsBinding,
+            error.InvalidQName,
+            error.UndeclaredNsPrefix,
+            error.QNameNotAllowed,
+            => unreachable,
+            error.DoctypeNotSupported,
+            error.DuplicateAttribute,
+            error.InvalidCharacterReference,
+            error.InvalidEncoding,
+            error.InvalidPiTarget,
+            error.InvalidUtf8,
+            error.MismatchedEndTag,
+            error.Overflow,
+            error.SyntaxError,
+            error.UndeclaredEntityReference,
+            error.UnexpectedEndOfInput,
+            => return error.InvalidPbn,
+            else => |other| return other,
+        };
     }
 
-    pub fn parseFile(allocator: Allocator, file: [:0]const u8) Error!PuzzleSet {
-        const doc = xml.parseFile(file) catch return error.InvalidPbn;
-        defer c.xmlFreeDoc(doc);
-        return try parseDoc(allocator, doc);
-    }
-
-    pub fn writeFile(self: PuzzleSet, file: [:0]const u8) WriteError!void {
-        const writer = c.xmlNewTextWriterFilename(file, 0).?;
-        defer c.xmlFreeTextWriter(writer);
-        _ = c.xmlTextWriterSetIndent(writer, 2);
-        self.writeDoc(writer) catch return error.WriteFailed;
+    pub fn writeFile(self: PuzzleSet, path: [:0]const u8) WriteError!void {
+        const file = try fs.cwd().createFile(path, .{});
+        defer file.close();
+        var buffered_writer = io.bufferedWriter(file.writer());
+        const writer = xml.writer(buffered_writer.writer());
+        try self.writeDoc(writer);
+        try buffered_writer.flush();
+        try file.sync();
     }
 
     pub fn deinit(self: *PuzzleSet) void {
         self.arena.deinit();
     }
 
-    fn parseDoc(a: Allocator, doc: *c.xmlDoc) !PuzzleSet {
+    fn parseXml(allocator: Allocator, reader: anytype) !PuzzleSet {
+        var puzzle_set: ?PuzzleSet = null;
+        while (try reader.next()) |event| {
+            switch (event) {
+                .element_start => |e| if (e.name.is(null, "puzzleset")) {
+                    puzzle_set = try parseInternal(allocator, reader.children());
+                } else {
+                    try reader.children().skip();
+                },
+                else => {},
+            }
+        }
+        return puzzle_set orelse error.InvalidPbn;
+    }
+
+    fn parseInternal(a: Allocator, children: anytype) !PuzzleSet {
         var arena = ArenaAllocator.init(a);
         const allocator = arena.allocator();
-        const node: *c.xmlNode = c.xmlDocGetRootElement(doc) orelse return error.InvalidPbn;
 
         var source: ?[:0]const u8 = null;
         var id: ?[:0]const u8 = null;
@@ -64,22 +103,26 @@ pub const PuzzleSet = struct {
         var copyright: ?[:0]const u8 = null;
         var puzzles = ArrayListUnmanaged(Puzzle){};
 
-        var maybe_child: ?*c.xmlNode = node.children;
-        while (maybe_child) |child| : (maybe_child = child.next) {
-            if (xml.nodeIs(child, null, "source")) {
-                source = try xml.nodeContent(allocator, child);
-            } else if (xml.nodeIs(child, null, "id")) {
-                id = try xml.nodeContent(allocator, child);
-            } else if (xml.nodeIs(child, null, "title")) {
-                title = try xml.nodeContent(allocator, child);
-            } else if (xml.nodeIs(child, null, "author")) {
-                author = try xml.nodeContent(allocator, child);
-            } else if (xml.nodeIs(child, null, "authorid")) {
-                author_id = try xml.nodeContent(allocator, child);
-            } else if (xml.nodeIs(child, null, "copyright")) {
-                copyright = try xml.nodeContent(allocator, child);
-            } else if (xml.nodeIs(child, null, "puzzle")) {
-                try puzzles.append(allocator, try Puzzle.parse(allocator, child));
+        while (try children.next()) |event| {
+            switch (event) {
+                .element_start => |child| if (child.name.is(null, "source")) {
+                    source = try textContent(allocator, children.children());
+                } else if (child.name.is(null, "id")) {
+                    id = try textContent(allocator, children.children());
+                } else if (child.name.is(null, "title")) {
+                    title = try textContent(allocator, children.children());
+                } else if (child.name.is(null, "author")) {
+                    author = try textContent(allocator, children.children());
+                } else if (child.name.is(null, "authorid")) {
+                    author_id = try textContent(allocator, children.children());
+                } else if (child.name.is(null, "copyright")) {
+                    copyright = try textContent(allocator, children.children());
+                } else if (child.name.is(null, "puzzle")) {
+                    try puzzles.append(allocator, try Puzzle.parse(allocator, child, children.children()));
+                } else {
+                    try children.children().skip();
+                },
+                else => {},
             }
         }
 
@@ -95,9 +138,9 @@ pub const PuzzleSet = struct {
         };
     }
 
-    fn writeDoc(self: PuzzleSet, writer: *c.xmlTextWriter) !void {
-        try xml.handle(c.xmlTextWriterStartDocument(writer, "1.0", "UTF-8", "yes"));
-        try xml.handle(c.xmlTextWriterStartElement(writer, "puzzleset"));
+    fn writeDoc(self: PuzzleSet, writer: anytype) !void {
+        try writer.writeEvent(.{ .xml_declaration = .{ .version = "1.0", .encoding = "UTF-8", .standalone = true } });
+        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "puzzleset" } } });
         if (self.source) |source| {
             try writeTextElement(writer, "source", source);
         }
@@ -119,8 +162,7 @@ pub const PuzzleSet = struct {
         for (self.puzzles) |puzzle| {
             try puzzle.write(writer);
         }
-        try xml.handle(c.xmlTextWriterEndElement(writer));
-        try xml.handle(c.xmlTextWriterEndDocument(writer));
+        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "puzzleset" } } });
     }
 };
 
@@ -139,7 +181,7 @@ pub const Puzzle = struct {
     column_clues: Clues,
     solutions: []const Solution,
 
-    fn parse(allocator: Allocator, node: *const c.xmlNode) !Puzzle {
+    fn parse(allocator: Allocator, start: xml.Event.ElementStart, children: anytype) !Puzzle {
         var source: ?[:0]const u8 = null;
         var id: ?[:0]const u8 = null;
         var title: ?[:0]const u8 = null;
@@ -158,42 +200,45 @@ pub const Puzzle = struct {
         try colors.put(allocator, "black", Color.black);
         try colors.put(allocator, "white", Color.white);
 
-        var maybe_attr: ?*c.xmlAttr = node.properties;
-        while (maybe_attr) |attr| : (maybe_attr = attr.next) {
-            if (xml.attrIs(attr, null, "defaultcolor")) {
-                default_color = try xml.attrContent(allocator, attr);
-            } else if (xml.attrIs(attr, null, "backgroundcolor")) {
-                background_color = try xml.attrContent(allocator, attr);
+        for (start.attributes) |attr| {
+            if (attr.name.is(null, "defaultcolor")) {
+                default_color = try allocator.dupeZ(u8, attr.value);
+            } else if (attr.name.is(null, "backgroundcolor")) {
+                background_color = try allocator.dupeZ(u8, attr.value);
             }
         }
 
-        var maybe_child: ?*c.xmlNode = node.children;
-        while (maybe_child) |child| : (maybe_child = child.next) {
-            if (xml.nodeIs(child, null, "source")) {
-                source = try xml.nodeContent(allocator, child);
-            } else if (xml.nodeIs(child, null, "id")) {
-                id = try xml.nodeContent(allocator, child);
-            } else if (xml.nodeIs(child, null, "title")) {
-                title = try xml.nodeContent(allocator, child);
-            } else if (xml.nodeIs(child, null, "author")) {
-                author = try xml.nodeContent(allocator, child);
-            } else if (xml.nodeIs(child, null, "authorid")) {
-                author_id = try xml.nodeContent(allocator, child);
-            } else if (xml.nodeIs(child, null, "copyright")) {
-                copyright = try xml.nodeContent(allocator, child);
-            } else if (xml.nodeIs(child, null, "description")) {
-                description = try xml.nodeContent(allocator, child);
-            } else if (xml.nodeIs(child, null, "color")) {
-                const color = try Color.parse(allocator, child);
-                try colors.put(allocator, color.name, color);
-            } else if (xml.nodeIs(child, null, "clues")) {
-                const parsed_clues = try Clues.parse(allocator, child);
-                switch (parsed_clues.type) {
-                    .rows => row_clues = parsed_clues,
-                    .columns => column_clues = parsed_clues,
-                }
-            } else if (xml.nodeIs(child, null, "solution")) {
-                try solutions.append(allocator, try Solution.parse(allocator, child));
+        while (try children.next()) |event| {
+            switch (event) {
+                .element_start => |child| if (child.name.is(null, "source")) {
+                    source = try textContent(allocator, children.children());
+                } else if (child.name.is(null, "id")) {
+                    id = try textContent(allocator, children.children());
+                } else if (child.name.is(null, "title")) {
+                    title = try textContent(allocator, children.children());
+                } else if (child.name.is(null, "author")) {
+                    author = try textContent(allocator, children.children());
+                } else if (child.name.is(null, "authorid")) {
+                    author_id = try textContent(allocator, children.children());
+                } else if (child.name.is(null, "copyright")) {
+                    copyright = try textContent(allocator, children.children());
+                } else if (child.name.is(null, "description")) {
+                    description = try textContent(allocator, children.children());
+                } else if (child.name.is(null, "color")) {
+                    const color = try Color.parse(allocator, child, children.children());
+                    try colors.put(allocator, color.name, color);
+                } else if (child.name.is(null, "clues")) {
+                    const clues = try Clues.parse(allocator, child, children.children());
+                    switch (clues.type) {
+                        .rows => row_clues = clues,
+                        .columns => column_clues = clues,
+                    }
+                } else if (child.name.is(null, "solution")) {
+                    try solutions.append(allocator, try Solution.parse(allocator, child, children.children()));
+                } else {
+                    try children.children().skip();
+                },
+                else => {},
             }
         }
 
@@ -230,10 +275,11 @@ pub const Puzzle = struct {
         };
     }
 
-    fn write(self: Puzzle, writer: *c.xmlTextWriter) !void {
-        try xml.handle(c.xmlTextWriterStartElement(writer, "puzzle"));
-        try xml.handle(c.xmlTextWriterWriteAttribute(writer, "defaultcolor", self.default_color));
-        try xml.handle(c.xmlTextWriterWriteAttribute(writer, "backgroundcolor", self.background_color));
+    fn write(self: Puzzle, writer: anytype) !void {
+        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "puzzle" }, .attributes = &.{
+            .{ .name = .{ .local = "defaultcolor" }, .value = self.default_color },
+            .{ .name = .{ .local = "backgroundcolor" }, .value = self.background_color },
+        } } });
         if (self.source) |source| {
             try writeTextElement(writer, "source", source);
         }
@@ -263,7 +309,7 @@ pub const Puzzle = struct {
         for (self.solutions) |solution| {
             try solution.write(writer);
         }
-        try xml.handle(c.xmlTextWriterEndElement(writer));
+        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "puzzle" } } });
     }
 };
 
@@ -302,40 +348,42 @@ pub const Color = struct {
         };
     }
 
-    fn parse(allocator: Allocator, node: *const c.xmlNode) !Color {
+    fn parse(allocator: Allocator, start: xml.Event.ElementStart, children: anytype) !Color {
         var name: ?[:0]const u8 = null;
         var char: ?u8 = null;
-        const value: ?[:0]const u8 = try xml.nodeContent(allocator, node);
 
-        var maybe_attr: ?*c.xmlAttr = node.properties;
-        while (maybe_attr) |attr| : (maybe_attr = attr.next) {
-            if (xml.attrIs(attr, null, "name")) {
-                name = try xml.attrContent(allocator, attr);
-            } else if (xml.attrIs(attr, null, "char")) {
-                const content = try xml.attrContent(allocator, attr);
-                defer allocator.free(content);
-                if (content.len != 1) {
+        for (start.attributes) |attr| {
+            if (attr.name.is(null, "name")) {
+                name = try allocator.dupeZ(u8, attr.value);
+            } else if (attr.name.is(null, "char")) {
+                if (attr.value.len != 1) {
                     return error.InvalidPbn;
                 }
-                char = content[0];
+                char = attr.value[0];
             }
         }
+
+        const value: [:0]const u8 = try textContent(allocator, children.children());
 
         return .{
             .name = name orelse return error.InvalidPbn,
             .char = char,
-            .value = value orelse return error.InvalidPbn,
+            .value = value,
         };
     }
 
-    fn write(self: Color, writer: *c.xmlTextWriter) !void {
-        try xml.handle(c.xmlTextWriterStartElement(writer, "color"));
-        try xml.handle(c.xmlTextWriterWriteAttribute(writer, "name", self.name));
+    fn write(self: Color, writer: anytype) !void {
+        // TODO: OK the current writer API is really bad
+        var attrs = std.BoundedArray(xml.Event.Attribute, 2){};
+        attrs.appendAssumeCapacity(.{ .name = .{ .local = "name" }, .value = self.name });
+        var char_buf: [1]u8 = undefined;
         if (self.char) |char| {
-            try xml.handle(c.xmlTextWriterWriteAttribute(writer, "char", &[_:0]u8{char}));
+            char_buf[0] = char;
+            attrs.appendAssumeCapacity(.{ .name = .{ .local = "char" }, .value = &char_buf });
         }
-        try xml.handle(c.xmlTextWriterWriteString(writer, self.value));
-        try xml.handle(c.xmlTextWriterEndElement(writer));
+        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "color" }, .attributes = attrs.slice() } });
+        try writer.writeEvent(.{ .element_content = .{ .content = self.value } });
+        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "color" } } });
     }
 };
 
@@ -345,23 +393,24 @@ pub const Clues = struct {
 
     pub const Type = enum { columns, rows };
 
-    fn parse(allocator: Allocator, node: *const c.xmlNode) !Clues {
+    fn parse(allocator: Allocator, start: xml.Event.ElementStart, children: anytype) !Clues {
         var @"type": ?Type = null;
         var lines = ArrayListUnmanaged(Line){};
 
-        var maybe_attr: ?*c.xmlAttr = node.properties;
-        while (maybe_attr) |attr| : (maybe_attr = attr.next) {
-            if (xml.attrIs(attr, null, "type")) {
-                const content = try xml.attrContent(allocator, attr);
-                defer allocator.free(content);
-                @"type" = meta.stringToEnum(Type, content) orelse return error.InvalidPbn;
+        for (start.attributes) |attr| {
+            if (attr.name.is(null, "type")) {
+                @"type" = meta.stringToEnum(Type, attr.value) orelse return error.InvalidPbn;
             }
         }
 
-        var maybe_child: ?*c.xmlNode = node.children;
-        while (maybe_child) |child| : (maybe_child = child.next) {
-            if (xml.nodeIs(child, null, "line")) {
-                try lines.append(allocator, try Line.parse(allocator, child));
+        while (try children.next()) |event| {
+            switch (event) {
+                .element_start => |child| if (child.name.is(null, "line")) {
+                    try lines.append(allocator, try Line.parse(allocator, children.children()));
+                } else {
+                    try children.children().skip();
+                },
+                else => {},
             }
         }
 
@@ -371,26 +420,31 @@ pub const Clues = struct {
         };
     }
 
-    fn write(self: Clues, writer: *c.xmlTextWriter) !void {
-        try xml.handle(c.xmlTextWriterStartElement(writer, "clues"));
-        try xml.handle(c.xmlTextWriterWriteAttribute(writer, "type", @tagName(self.type)));
+    fn write(self: Clues, writer: anytype) !void {
+        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "clues" }, .attributes = &.{
+            .{ .name = .{ .local = "type" }, .value = @tagName(self.type) },
+        } } });
         for (self.lines) |line| {
             try line.write(writer);
         }
-        try xml.handle(c.xmlTextWriterEndElement(writer));
+        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "clues" } } });
     }
 };
 
 pub const Line = struct {
     counts: []const Count,
 
-    fn parse(allocator: Allocator, node: *const c.xmlNode) !Line {
+    fn parse(allocator: Allocator, children: anytype) !Line {
         var counts = ArrayListUnmanaged(Count){};
 
-        var maybe_child: ?*c.xmlNode = node.children;
-        while (maybe_child) |child| : (maybe_child = child.next) {
-            if (xml.nodeIs(child, null, "count")) {
-                try counts.append(allocator, try Count.parse(allocator, child));
+        while (try children.next()) |event| {
+            switch (event) {
+                .element_start => |child| if (child.name.is(null, "count")) {
+                    try counts.append(allocator, try Count.parse(allocator, child, children.children()));
+                } else {
+                    try children.children().skip();
+                },
+                else => {},
             }
         }
 
@@ -399,12 +453,12 @@ pub const Line = struct {
         };
     }
 
-    fn write(self: Line, writer: *c.xmlTextWriter) !void {
-        try xml.handle(c.xmlTextWriterStartElement(writer, "line"));
+    fn write(self: Line, writer: anytype) !void {
+        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "line" } } });
         for (self.counts) |count| {
             try count.write(writer);
         }
-        try xml.handle(c.xmlTextWriterEndElement(writer));
+        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "line" } } });
     }
 };
 
@@ -412,20 +466,20 @@ pub const Count = struct {
     color: ?[:0]const u8,
     n: usize,
 
-    fn parse(allocator: Allocator, node: *const c.xmlNode) !Count {
+    fn parse(allocator: Allocator, start: xml.Event.ElementStart, children: anytype) !Count {
         var color: ?[:0]const u8 = null;
+
+        for (start.attributes) |attr| {
+            if (attr.name.is(null, "color")) {
+                color = try allocator.dupeZ(u8, attr.value);
+            }
+        }
+
         const n = blk: {
-            const content = try xml.nodeContent(allocator, node.children);
+            const content = try textContent(allocator, children.children());
             defer allocator.free(content);
             break :blk fmt.parseInt(usize, content, 10) catch return error.InvalidPbn;
         };
-
-        var maybe_attr: ?*c.xmlAttr = node.properties;
-        while (maybe_attr) |attr| : (maybe_attr = attr.next) {
-            if (xml.attrIs(attr, null, "color")) {
-                color = try xml.attrContent(allocator, attr);
-            }
-        }
 
         return .{
             .color = color,
@@ -433,16 +487,16 @@ pub const Count = struct {
         };
     }
 
-    fn write(self: Count, writer: *c.xmlTextWriter) !void {
-        try xml.handle(c.xmlTextWriterStartElement(writer, "count"));
+    fn write(self: Count, writer: anytype) !void {
+        // TODO: improve the XML writer API. This should be easier.
+        var attrs = std.BoundedArray(xml.Event.Attribute, 1){};
         if (self.color) |color| {
-            try xml.handle(c.xmlTextWriterWriteAttribute(writer, "color", color));
+            attrs.appendAssumeCapacity(.{ .name = .{ .local = "color" }, .value = color });
         }
+        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "count" }, .attributes = attrs.slice() } });
         var buf: [32]u8 = undefined;
-        const fmtlen = fmt.formatIntBuf(&buf, self.n, 10, .lower, .{});
-        buf[fmtlen] = 0;
-        try xml.handle(c.xmlTextWriterWriteString(writer, buf[0..fmtlen :0]));
-        try xml.handle(c.xmlTextWriterEndElement(writer));
+        try writer.writeEvent(.{ .element_content = .{ .content = fmt.bufPrint(&buf, "{}", .{self.n}) catch unreachable } });
+        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "count" } } });
     }
 };
 
@@ -452,23 +506,24 @@ pub const Solution = struct {
 
     pub const Type = enum { goal, solution, saved };
 
-    fn parse(allocator: Allocator, node: *const c.xmlNode) !Solution {
+    fn parse(allocator: Allocator, start: xml.Event.ElementStart, children: anytype) !Solution {
         var @"type": ?Type = null;
         var image: ?Image = null;
 
-        var maybe_attr: ?*c.xmlAttr = node.properties;
-        while (maybe_attr) |attr| : (maybe_attr = attr.next) {
-            if (xml.attrIs(attr, null, "type")) {
-                const content = try xml.attrContent(allocator, attr);
-                defer allocator.free(content);
-                @"type" = meta.stringToEnum(Type, content) orelse return error.InvalidPbn;
+        for (start.attributes) |attr| {
+            if (attr.name.is(null, "type")) {
+                @"type" = meta.stringToEnum(Type, attr.value) orelse return error.InvalidPbn;
             }
         }
 
-        var maybe_child: ?*c.xmlNode = node.children;
-        while (maybe_child) |child| : (maybe_child = child.next) {
-            if (xml.nodeIs(child, null, "image")) {
-                image = try Image.parse(allocator, node);
+        while (try children.next()) |event| {
+            switch (event) {
+                .element_start => |child| if (child.name.is(null, "image")) {
+                    image = try Image.parse(allocator, children.children());
+                } else {
+                    try children.children().skip();
+                },
+                else => {},
             }
         }
 
@@ -478,11 +533,12 @@ pub const Solution = struct {
         };
     }
 
-    fn write(self: Solution, writer: *c.xmlTextWriter) !void {
-        try xml.handle(c.xmlTextWriterStartElement(writer, "solution"));
-        try xml.handle(c.xmlTextWriterWriteAttribute(writer, "type", @tagName(self.type)));
+    fn write(self: Solution, writer: anytype) !void {
+        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "solution" }, .attributes = &.{
+            .{ .name = .{ .local = "type" }, .value = @tagName(self.type) },
+        } } });
         try self.image.write(writer);
-        try xml.handle(c.xmlTextWriterEndElement(writer));
+        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "solution" } } });
     }
 };
 
@@ -522,11 +578,11 @@ pub const Image = struct {
                     continue;
                 } else if (row_chars[row_pos] == '[') {
                     const options_end = mem.indexOfScalarPos(u8, row_chars, row_pos + 1, ']') orelse return error.InvalidPbn;
-                    try chars.append(allocator, try allocator.dupe(u8, row_chars[row_pos + 1 .. options_end]));
+                    try chars.append(allocator, try allocator.dupeZ(u8, row_chars[row_pos + 1 .. options_end]));
                     row_pos = options_end + 1;
                     row_columns += 1;
                 } else {
-                    try chars.append(allocator, try allocator.dupe(u8, &.{row_chars[row_pos]}));
+                    try chars.append(allocator, try allocator.dupeZ(u8, &.{row_chars[row_pos]}));
                     row_pos += 1;
                     row_columns += 1;
                 }
@@ -632,36 +688,47 @@ pub const Image = struct {
         };
     }
 
-    fn parse(allocator: Allocator, node: *const c.xmlNode) !Image {
-        const text = try xml.nodeContent(allocator, node);
+    fn parse(allocator: Allocator, children: anytype) !Image {
+        const text = try textContent(allocator, children);
         defer allocator.free(text);
         return try fromText(allocator, text);
     }
 
-    fn write(self: Image, writer: *c.xmlTextWriter) !void {
-        try xml.handle(c.xmlTextWriterStartElement(writer, "image"));
+    fn write(self: Image, writer: anytype) !void {
+        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "image" } } });
         var row_iter = mem.window([]const u8, self.chars, self.columns, self.columns);
         while (row_iter.next()) |row| {
-            try xml.handle(c.xmlTextWriterWriteString(writer, "|"));
+            try writer.writeEvent(.{ .element_content = .{ .content = "|" } });
             for (row) |options| {
                 if (options.len == 1) {
-                    try xml.handle(c.xmlTextWriterWriteString(writer, &[_:0]u8{options[0]}));
+                    try writer.writeEvent(.{ .element_content = .{ .content = &[_]u8{options[0]} } });
                 } else {
-                    try xml.handle(c.xmlTextWriterWriteString(writer, "["));
+                    try writer.writeEvent(.{ .element_content = .{ .content = "[" } });
                     for (options) |char| {
-                        try xml.handle(c.xmlTextWriterWriteString(writer, &[_:0]u8{char}));
+                        try writer.writeEvent(.{ .element_content = .{ .content = &[_]u8{char} } });
                     }
-                    try xml.handle(c.xmlTextWriterWriteString(writer, "]"));
+                    try writer.writeEvent(.{ .element_content = .{ .content = "]" } });
                 }
             }
-            try xml.handle(c.xmlTextWriterWriteString(writer, "|\n"));
+            try writer.writeEvent(.{ .element_content = .{ .content = "|\n" } });
         }
-        try xml.handle(c.xmlTextWriterEndElement(writer));
+        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "image" } } });
     }
 };
 
-fn writeTextElement(writer: *c.xmlTextWriter, name: [:0]const u8, value: [:0]const u8) !void {
-    try xml.handle(c.xmlTextWriterStartElement(writer, name));
-    try xml.handle(c.xmlTextWriterWriteString(writer, value));
-    try xml.handle(c.xmlTextWriterEndElement(writer));
+fn writeTextElement(writer: anytype, name: [:0]const u8, value: [:0]const u8) !void {
+    try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = name } } });
+    try writer.writeEvent(.{ .element_content = .{ .content = value } });
+    try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = name } } });
+}
+
+fn textContent(allocator: Allocator, children: anytype) ![:0]u8 {
+    var text = ArrayListUnmanaged(u8){};
+    while (try children.next()) |event| {
+        switch (event) {
+            .element_content => |e| try text.appendSlice(allocator, e.content),
+            else => {},
+        }
+    }
+    return try text.toOwnedSliceSentinel(allocator, 0);
 }

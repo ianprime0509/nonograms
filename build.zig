@@ -1,16 +1,11 @@
 const std = @import("std");
-const libxml2 = @import("lib/zig-libxml2/libxml2.zig");
 const zig_gobject = @import("lib/zig-gobject/build.zig");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const libxml2_lib = try libxml2.create(b, target, optimize, .{
-        .iconv = false,
-        .lzma = false,
-        .zlib = false,
-    });
+    const xml = b.dependency("xml", .{}).module("xml");
 
     const exe = b.addExecutable(.{
         .name = "nonograms",
@@ -18,7 +13,8 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    libxml2_lib.link(exe);
+    exe.linkLibC();
+    exe.addModule("xml", xml);
     exe.addModule("glib", zig_gobject.addBindingModule(b, exe, "glib-2.0"));
     exe.addModule("gobject", zig_gobject.addBindingModule(b, exe, "gobject-2.0"));
     exe.addModule("gio", zig_gobject.addBindingModule(b, exe, "gio-2.0"));

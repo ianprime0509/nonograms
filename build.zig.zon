@@ -1,0 +1,10 @@
+.{
+    .name = "nonograms",
+    .version = "0.0.0",
+    .dependencies = .{
+        .xml = .{
+            .url = "https://github.com/ianprime0509/zig-xml/archive/c739c03a169aa58231c34c3b258afeb75d5f73fa.tar.gz",
+            .hash = "12203b91fa4a2f1025f3a1cb69e8fd43a224633661bdb339a8adc94a603a29e12909",
+        },
+    },
+}

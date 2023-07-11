@@ -137,7 +137,7 @@ const ApplicationWindow = extern struct {
         self.private().puzzle_set_uri = uri;
         var size: usize = undefined;
         const bytes = contents.getData(&size);
-        var puzzle_set = pbn.PuzzleSet.parseBytes(c_allocator, bytes[0..size], uri) catch {
+        var puzzle_set = pbn.PuzzleSet.parseBytes(c_allocator, bytes[0..size]) catch {
             self.private().toast_overlay.addToast(adw.Toast.new("Failed to load puzzle"));
             return;
         };
