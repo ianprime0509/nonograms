@@ -243,7 +243,7 @@ const ApplicationWindow = extern struct {
                 break;
             }
         } else {
-            solutions.append(c_allocator, .{ .type = .saved, .image = undefined }) catch oom();
+            solutions.append(c_allocator, .{ .type = .saved, .image = undefined, .notes = &.{} }) catch oom();
         }
         solutions.items[saved_index].image = image;
         puzzle.solutions = solutions.items;

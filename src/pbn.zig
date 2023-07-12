@@ -27,6 +27,7 @@ pub const PuzzleSet = struct {
     author: ?[:0]const u8,
     author_id: ?[:0]const u8,
     copyright: ?[:0]const u8,
+    notes: []const [:0]const u8,
     arena: ArenaAllocator,
 
     pub fn parseBytes(allocator: Allocator, bytes: []const u8) Error!PuzzleSet {
@@ -102,6 +103,7 @@ pub const PuzzleSet = struct {
         var author_id: ?[:0]const u8 = null;
         var copyright: ?[:0]const u8 = null;
         var puzzles = ArrayListUnmanaged(Puzzle){};
+        var notes = ArrayListUnmanaged([:0]const u8){};
 
         while (try children.next()) |event| {
             switch (event) {
@@ -119,6 +121,8 @@ pub const PuzzleSet = struct {
                     copyright = try textContent(allocator, children.children());
                 } else if (child.name.is(null, "puzzle")) {
                     try puzzles.append(allocator, try Puzzle.parse(allocator, child, children.children()));
+                } else if (child.name.is(null, "note")) {
+                    try notes.append(allocator, try textContent(allocator, children.children()));
                 } else {
                     try children.children().skip();
                 },
@@ -134,6 +138,7 @@ pub const PuzzleSet = struct {
             .author_id = author_id,
             .copyright = copyright,
             .puzzles = try puzzles.toOwnedSlice(allocator),
+            .notes = try notes.toOwnedSlice(allocator),
             .arena = arena,
         };
     }
@@ -162,6 +167,9 @@ pub const PuzzleSet = struct {
         for (self.puzzles) |puzzle| {
             try puzzle.write(writer);
         }
+        for (self.notes) |note| {
+            try writeTextElement(writer, "note", note);
+        }
         try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "puzzleset" } } });
     }
 };
@@ -180,6 +188,7 @@ pub const Puzzle = struct {
     row_clues: Clues,
     column_clues: Clues,
     solutions: []const Solution,
+    notes: []const [:0]const u8,
 
     fn parse(allocator: Allocator, start: xml.Event.ElementStart, children: anytype) !Puzzle {
         var source: ?[:0]const u8 = null;
@@ -195,6 +204,7 @@ pub const Puzzle = struct {
         var row_clues: ?Clues = null;
         var column_clues: ?Clues = null;
         var solutions = ArrayListUnmanaged(Solution){};
+        var notes = ArrayListUnmanaged([:0]const u8){};
 
         // Predefined colors
         try colors.put(allocator, "black", Color.black);
@@ -235,6 +245,8 @@ pub const Puzzle = struct {
                     }
                 } else if (child.name.is(null, "solution")) {
                     try solutions.append(allocator, try Solution.parse(allocator, child, children.children()));
+                } else if (child.name.is(null, "note")) {
+                    try notes.append(allocator, try textContent(allocator, children.children()));
                 } else {
                     try children.children().skip();
                 },
@@ -272,6 +284,7 @@ pub const Puzzle = struct {
             .row_clues = row_clues.?,
             .column_clues = column_clues.?,
             .solutions = try solutions.toOwnedSlice(allocator),
+            .notes = try notes.toOwnedSlice(allocator),
         };
     }
 
@@ -308,6 +321,9 @@ pub const Puzzle = struct {
         try self.column_clues.write(writer);
         for (self.solutions) |solution| {
             try solution.write(writer);
+        }
+        for (self.notes) |note| {
+            try writeTextElement(writer, "note", note);
         }
         try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "puzzle" } } });
     }
@@ -503,12 +519,14 @@ pub const Count = struct {
 pub const Solution = struct {
     type: Type,
     image: Image,
+    notes: []const [:0]const u8,
 
     pub const Type = enum { goal, solution, saved };
 
     fn parse(allocator: Allocator, start: xml.Event.ElementStart, children: anytype) !Solution {
         var @"type": ?Type = null;
         var image: ?Image = null;
+        var notes = ArrayListUnmanaged([:0]const u8){};
 
         for (start.attributes) |attr| {
             if (attr.name.is(null, "type")) {
@@ -520,6 +538,8 @@ pub const Solution = struct {
             switch (event) {
                 .element_start => |child| if (child.name.is(null, "image")) {
                     image = try Image.parse(allocator, children.children());
+                } else if (child.name.is(null, "note")) {
+                    try notes.append(allocator, try textContent(allocator, children.children()));
                 } else {
                     try children.children().skip();
                 },
@@ -530,6 +550,7 @@ pub const Solution = struct {
         return .{
             .type = @"type" orelse .goal,
             .image = image orelse return error.InvalidPbn,
+            .notes = try notes.toOwnedSlice(allocator),
         };
     }
 
@@ -538,6 +559,9 @@ pub const Solution = struct {
             .{ .name = .{ .local = "type" }, .value = @tagName(self.type) },
         } } });
         try self.image.write(writer);
+        for (self.notes) |note| {
+            try writeTextElement(writer, "note", note);
+        }
         try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "solution" } } });
     }
 };
