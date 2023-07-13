@@ -343,6 +343,12 @@ pub const View = extern struct {
         self.private().color_picker.load(puzzle);
     }
 
+    pub fn clear(self: *Self) void {
+        const state = self.private().state orelse return;
+        @memset(state.tile_colors, state.background_color);
+        self.private().drawing_area.queueDraw();
+    }
+
     pub fn getImage(self: *Self, allocator: Allocator, colors: []const pbn.Color) !?pbn.Image {
         const state = self.private().state orelse return null;
         return try state.toImage(allocator, colors);

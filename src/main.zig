@@ -81,6 +81,7 @@ const ApplicationWindow = extern struct {
         puzzle_set: ?pbn.PuzzleSet,
         puzzle_set_uri: ?[:0]u8,
         puzzle_index: ?usize,
+        clear_action: *gio.SimpleAction,
 
         var offset: c_int = 0;
     };
@@ -102,12 +103,17 @@ const ApplicationWindow = extern struct {
     fn init(self: *Self, _: *Class) callconv(.C) void {
         self.initTemplate();
 
-        const about = gio.SimpleAction.new("about", null);
-        _ = about.connectActivate(*Self, &handleAboutAction, self, .{});
-        self.addAction(about.as(gio.Action));
         const open = gio.SimpleAction.new("open", null);
         _ = open.connectActivate(*Self, &handleOpenAction, self, .{});
         self.addAction(open.as(gio.Action));
+        const clear = gio.SimpleAction.new("clear", null);
+        clear.setEnabled(0);
+        self.addAction(clear.as(gio.Action));
+        _ = clear.connectActivate(*Self, &handleClearAction, self, .{});
+        self.private().clear_action = clear;
+        const about = gio.SimpleAction.new("about", null);
+        _ = about.connectActivate(*Self, &handleAboutAction, self, .{});
+        self.addAction(about.as(gio.Action));
 
         _ = self.connectCloseRequest(?*anyopaque, &handleCloseRequest, null, .{});
         _ = self.private().puzzle_list.connectRowActivated(*Self, &handlePuzzleRowActivated, self, .{});
@@ -161,17 +167,34 @@ const ApplicationWindow = extern struct {
             puzzle_list.append(action_row.as(gtk.Widget));
         }
         self.private().stack.setVisibleChildName("puzzle_selector");
+        self.private().clear_action.setEnabled(0);
     }
 
     fn loadPuzzle(self: *Self, puzzle: pbn.Puzzle) void {
         self.private().window_title.setSubtitle(puzzle.title orelse "");
         self.private().view.load(puzzle);
         self.private().stack.setVisibleChildName("view");
+        self.private().clear_action.setEnabled(1);
     }
 
     fn deinitPuzzleSet(self: *Self) void {
         const puzzle_set = &(self.private().puzzle_set orelse return);
         puzzle_set.deinit();
+    }
+
+    fn handleOpenAction(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
+        const chooser = gtk.FileChooserNative.new("Open Puzzle", self.as(gtk.Window), .open, "_Open", "_Cancel");
+        const filter = gtk.FileFilter.new();
+        filter.setName("PBN XML");
+        filter.addPattern("*.pbn");
+        filter.addPattern("*.xml");
+        chooser.addFilter(filter);
+        _ = chooser.connectResponse(*Self, &handleOpenResponse, self, .{});
+        chooser.show();
+    }
+
+    fn handleClearAction(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
+        self.private().view.clear();
     }
 
     fn handleAboutAction(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
@@ -184,17 +207,6 @@ const ApplicationWindow = extern struct {
         about.setLicenseType(gtk.License.mit_x11);
         about.setTransientFor(self.as(gtk.Window));
         about.present();
-    }
-
-    fn handleOpenAction(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
-        const chooser = gtk.FileChooserNative.new("Open Puzzle", self.as(gtk.Window), .open, "_Open", "_Cancel");
-        const filter = gtk.FileFilter.new();
-        filter.setName("PBN XML");
-        filter.addPattern("*.pbn");
-        filter.addPattern("*.xml");
-        chooser.addFilter(filter);
-        _ = chooser.connectResponse(*Self, &handleOpenResponse, self, .{});
-        chooser.show();
     }
 
     fn handleOpenResponse(chooser: *gtk.FileChooserNative, _: c_int, self: *Self) callconv(.C) void {

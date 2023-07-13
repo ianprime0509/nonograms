@@ -94,6 +94,12 @@
     </section>
     <section>
       <item>
+        <attribute name="label">Clear</attribute>
+        <attribute name="action">win.clear</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
         <attribute name="label">About</attribute>
         <attribute name="action">win.about</attribute>
       </item>
