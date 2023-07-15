@@ -121,6 +121,7 @@ const ApplicationWindow = extern struct {
 
         _ = self.connectCloseRequest(?*anyopaque, &handleCloseRequest, null, .{});
         _ = self.private().puzzle_list.connectRowActivated(*Self, &handlePuzzleRowActivated, self, .{});
+        _ = self.private().view.connectSolved(*Self, &handlePuzzleSolved, self, .{});
 
         // The function setFocus by itself is ambiguous because it could be
         // either gtk_window_set_focus or gtk_root_set_focus
@@ -277,6 +278,12 @@ const ApplicationWindow = extern struct {
         }
         self.private().puzzle_index = index;
         self.loadPuzzle(puzzle_set.puzzles[index]);
+    }
+
+    fn handlePuzzleSolved(_: *View, _: u32, self: *Self) callconv(.C) void {
+        const puzzle_set = self.private().puzzle_set orelse return;
+        const puzzle = puzzle_set.puzzles[self.private().puzzle_index orelse return];
+        self.private().toast_overlay.addToast(adw.Toast.new(puzzle.description orelse "Congratulations!"));
     }
 
     fn saveCurrentImage(self: *Self) void {

@@ -29,6 +29,10 @@ const Color = struct {
     const black = Color{ .r = 0, .g = 0, .b = 0 };
     const red = Color{ .r = 1, .g = 0, .b = 0 };
 
+    fn eql(self: Color, other: Color) bool {
+        return self.r == other.r and self.g == other.g and self.b == other.b;
+    }
+
     fn fromPbn(color: pbn.Color) !Color {
         const rgb = try color.toFloatRgb();
         return .{ .r = rgb.r, .g = rgb.g, .b = rgb.b };
@@ -61,6 +65,53 @@ const State = struct {
     column_hints: [][]Hint,
     max_column_hints: usize,
     hover_tile: ?Cell,
+    solved: bool,
+
+    fn isSolved(self: State) bool {
+        for (0..self.row_hints.len) |i| {
+            if (!self.isLineSolved(.row, i)) {
+                return false;
+            }
+        }
+        for (0..self.column_hints.len) |j| {
+            if (!self.isLineSolved(.column, j)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    fn isLineSolved(self: State, comptime dir: enum { row, column }, n: usize) bool {
+        const hints = if (dir == .row) self.row_hints[n] else self.column_hints[n];
+        const cross_len = if (dir == .row) self.column_hints.len else self.row_hints.len;
+        const cols = self.column_hints.len;
+        var run_color: Color = self.background_color;
+        var run_len: usize = 0;
+        var hint_idx: usize = 0;
+        for (0..cross_len) |m| {
+            const tile_pos = if (dir == .row) n * cols + m else m * cols + n;
+            const color = self.tile_colors[tile_pos] orelse self.background_color;
+            if (color.eql(run_color)) {
+                run_len += 1;
+                continue;
+            }
+            if (!run_color.eql(self.background_color)) {
+                if (hint_idx >= hints.len or !hints[hint_idx].color.eql(run_color) or hints[hint_idx].n != run_len) {
+                    return false;
+                }
+                hint_idx += 1;
+            }
+            run_color = color;
+            run_len = 1;
+        }
+        if (run_len > 0 and !run_color.eql(self.background_color)) {
+            if (hint_idx >= hints.len or !hints[hint_idx].color.eql(run_color) or hints[hint_idx].n != run_len) {
+                return false;
+            }
+            hint_idx += 1;
+        }
+        return hint_idx == hints.len;
+    }
 
     fn moveHoverTile(self: *State, drow: isize, dcolumn: isize) void {
         var hover_tile = self.hover_tile orelse {
@@ -206,6 +257,10 @@ pub const View = extern struct {
         .private = .{ .Type = Private, .offset = &Private.offset },
     });
 
+    // TODO: dummy c_uint parameter to avoid compiler bug with empty tuple type (issue TBD)
+    const solved = gobject.defineSignal("solved", *Self, &.{c_uint}, void);
+    pub const connectSolved = solved.connect;
+
     pub fn new() *Self {
         return Self.newWith(.{});
     }
@@ -295,7 +350,7 @@ pub const View = extern struct {
             color.* = background_color;
         }
 
-        const state = State{
+        var state = State{
             .tile_colors = tile_colors,
             .background_color = background_color,
             .default_color = default_color,
@@ -306,6 +361,7 @@ pub const View = extern struct {
             .column_hints = column_hints,
             .max_column_hints = max_column_hints,
             .hover_tile = null,
+            .solved = false,
         };
 
         const saved_image = for (puzzle.solutions) |solution| {
@@ -335,6 +391,7 @@ pub const View = extern struct {
                 }
             }
         }
+        state.solved = state.isSolved();
 
         self.private().state = state;
         self.private().dimensions = null;
@@ -344,8 +401,9 @@ pub const View = extern struct {
     }
 
     pub fn clear(self: *Self) void {
-        const state = self.private().state orelse return;
+        const state = &(self.private().state orelse return);
         @memset(state.tile_colors, state.background_color);
+        state.solved = false;
         self.private().drawing_area.queueDraw();
     }
 
@@ -516,10 +574,7 @@ pub const View = extern struct {
         const state = self.private().state orelse return;
         const dims = self.private().dimensions orelse return;
         const tile = dims.positionTile(x, y) orelse return;
-        if (state.tileIndex(tile.row, tile.column)) |n| {
-            state.tile_colors[n] = if (primary) state.selected_color else null;
-            self.private().drawing_area.queueDraw();
-        }
+        self.setColor(tile.row, tile.column, if (primary) state.selected_color else null);
     }
 
     fn handleResize(_: *gtk.DrawingArea, width: c_int, height: c_int, self: *Self) callconv(.C) void {
@@ -604,9 +659,7 @@ pub const View = extern struct {
         if (!self.private().keyboard_drawing) return;
         const state = &(self.private().state orelse return);
         const hover_tile = state.hover_tile orelse return;
-        const hover_tile_index = state.tileIndex(hover_tile.row, hover_tile.column) orelse return;
-        state.tile_colors[hover_tile_index] = state.selected_color;
-        self.private().drawing_area.queueDraw();
+        self.setColor(hover_tile.row, hover_tile.column, state.selected_color);
     }
 
     fn computeDimensions(state: State, width_int: c_int, height_int: c_int) Dimensions {
@@ -639,6 +692,20 @@ pub const View = extern struct {
         }
     }
 
+    fn setColor(self: *Self, row: usize, column: usize, color: ?Color) void {
+        const state = &(self.private().state orelse return);
+        if (state.solved) {
+            return;
+        }
+        const index = state.tileIndex(row, column) orelse return;
+        state.tile_colors[index] = color;
+        if (state.isSolved()) {
+            state.solved = true;
+            solved.emit(self, null, .{0}, null);
+        }
+        self.private().drawing_area.queueDraw();
+    }
+
     fn private(self: *Self) *Private {
         return gobject.impl_helpers.getPrivate(self, Private, Private.offset);
     }
@@ -658,6 +725,7 @@ pub const View = extern struct {
             class.setTemplateFromSlice(template);
             class.bindTemplateChildPrivate("drawing_area", .{});
             class.bindTemplateChildPrivate("color_picker", .{});
+            solved.register(.{});
         }
 
         fn bindTemplateChildPrivate(class: *Class, comptime name: [:0]const u8, comptime options: gtk.BindTemplateChildOptions) void {
