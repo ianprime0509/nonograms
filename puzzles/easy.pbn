@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <puzzleset>
-  <source>webpbn.com</source>
+  <title>Easy puzzles</title>
+  <author>Ian Johnson</author>
+  <copyright>Public domain (CC-0)</copyright>
   <puzzle defaultcolor="black" backgroundcolor="white">
     <title>In a cheerful mood</title>
-    <author>Ian Johnson</author>
-    <copyright>(c) Copyright 2023 Ian Johnson (CC-0, public domain)</copyright>
     <description>Be happy!</description>
     <color name="black" char="X">000000</color>
     <color name="white" char=".">FFFFFF</color>

@@ -78,6 +78,10 @@ const ApplicationWindow = extern struct {
         puzzle_set_title: *gtk.Label,
         puzzle_list: *gtk.ListBox,
         view: *View,
+        info_title: *gtk.Label,
+        info_author: *gtk.Label,
+        info_copyright: *gtk.Label,
+        info_source: *gtk.Label,
         puzzle_set: ?pbn.PuzzleSet,
         puzzle_set_uri: ?[:0]u8,
         puzzle_index: ?usize,
@@ -160,6 +164,27 @@ const ApplicationWindow = extern struct {
         }
         self.private().window_title.setSubtitle(puzzle_set.title orelse "");
         self.private().puzzle_set_title.setLabel(puzzle_set.title orelse "Puzzles");
+        self.private().info_title.setLabel(puzzle_set.title orelse "Untitled puzzle set");
+        if (puzzle_set.author) |author| {
+            self.private().info_author.setLabel(author);
+            self.private().info_author.setVisible(1);
+        } else {
+            self.private().info_author.setVisible(0);
+        }
+        if (puzzle_set.copyright) |copyright| {
+            self.private().info_copyright.setLabel(copyright);
+            self.private().info_copyright.setVisible(1);
+        } else {
+            self.private().info_copyright.setVisible(0);
+        }
+        if (puzzle_set.source) |source| {
+            const source_text = std.fmt.allocPrintZ(c_allocator, "From {s}", .{source}) catch oom();
+            defer c_allocator.free(source_text);
+            self.private().info_source.setLabel(source_text);
+            self.private().info_source.setVisible(1);
+        } else {
+            self.private().info_source.setVisible(0);
+        }
         for (puzzle_set.puzzles) |puzzle| {
             const action_row = adw.ActionRow.new();
             action_row.setTitle(puzzle.title orelse "Untitled");
@@ -171,7 +196,29 @@ const ApplicationWindow = extern struct {
     }
 
     fn loadPuzzle(self: *Self, puzzle: pbn.Puzzle) void {
+        const puzzle_set = self.private().puzzle_set orelse return;
         self.private().window_title.setSubtitle(puzzle.title orelse "");
+        self.private().info_title.setLabel(puzzle.title orelse "Untitled puzzle");
+        if (puzzle.author orelse puzzle_set.author) |author| {
+            self.private().info_author.setLabel(author);
+            self.private().info_author.setVisible(1);
+        } else {
+            self.private().info_author.setVisible(0);
+        }
+        if (puzzle.copyright orelse puzzle_set.copyright) |copyright| {
+            self.private().info_copyright.setLabel(copyright);
+            self.private().info_copyright.setVisible(1);
+        } else {
+            self.private().info_copyright.setVisible(0);
+        }
+        if (puzzle.source orelse puzzle_set.source) |source| {
+            const source_text = std.fmt.allocPrintZ(c_allocator, "From {s}", .{source}) catch oom();
+            defer c_allocator.free(source_text);
+            self.private().info_source.setLabel(source_text);
+            self.private().info_source.setVisible(1);
+        } else {
+            self.private().info_source.setVisible(0);
+        }
         self.private().view.load(puzzle);
         self.private().stack.setVisibleChildName("view");
         self.private().clear_action.setEnabled(1);
@@ -289,6 +336,10 @@ const ApplicationWindow = extern struct {
             class.bindTemplateChildPrivate("stack", .{});
             class.bindTemplateChildPrivate("puzzle_set_title", .{});
             class.bindTemplateChildPrivate("puzzle_list", .{});
+            class.bindTemplateChildPrivate("info_title", .{});
+            class.bindTemplateChildPrivate("info_author", .{});
+            class.bindTemplateChildPrivate("info_copyright", .{});
+            class.bindTemplateChildPrivate("info_source", .{});
             class.bindTemplateChildPrivate("view", .{});
         }
 
