@@ -67,8 +67,8 @@ pub const PuzzleSet = struct {
         const file = try fs.cwd().createFile(path, .{});
         defer file.close();
         var buffered_writer = io.bufferedWriter(file.writer());
-        const writer = xml.writer(buffered_writer.writer());
-        try self.writeDoc(writer);
+        var writer = xml.writer(buffered_writer.writer());
+        try self.writeDoc(&writer);
         try buffered_writer.flush();
         try file.sync();
     }
@@ -144,8 +144,8 @@ pub const PuzzleSet = struct {
     }
 
     fn writeDoc(self: PuzzleSet, writer: anytype) !void {
-        try writer.writeEvent(.{ .xml_declaration = .{ .version = "1.0", .encoding = "UTF-8", .standalone = true } });
-        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "puzzleset" } } });
+        try writer.writeXmlDeclaration("1.0", "UTF-8", true);
+        try writer.writeElementStart(.{ .local = "puzzleset" });
         if (self.source) |source| {
             try writeTextElement(writer, "source", source);
         }
@@ -170,7 +170,7 @@ pub const PuzzleSet = struct {
         for (self.notes) |note| {
             try writeTextElement(writer, "note", note);
         }
-        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "puzzleset" } } });
+        try writer.writeElementEnd(.{ .local = "puzzleset" });
     }
 };
 
@@ -289,10 +289,9 @@ pub const Puzzle = struct {
     }
 
     fn write(self: Puzzle, writer: anytype) !void {
-        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "puzzle" }, .attributes = &.{
-            .{ .name = .{ .local = "defaultcolor" }, .value = self.default_color },
-            .{ .name = .{ .local = "backgroundcolor" }, .value = self.background_color },
-        } } });
+        try writer.writeElementStart(.{ .local = "puzzle" });
+        try writer.writeAttribute(.{ .local = "defaultcolor" }, self.default_color);
+        try writer.writeAttribute(.{ .local = "backgroundcolor" }, self.background_color);
         if (self.source) |source| {
             try writeTextElement(writer, "source", source);
         }
@@ -325,7 +324,7 @@ pub const Puzzle = struct {
         for (self.notes) |note| {
             try writeTextElement(writer, "note", note);
         }
-        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "puzzle" } } });
+        try writer.writeElementEnd(.{ .local = "puzzle" });
     }
 };
 
@@ -389,17 +388,13 @@ pub const Color = struct {
     }
 
     fn write(self: Color, writer: anytype) !void {
-        // TODO: OK the current writer API is really bad
-        var attrs = std.BoundedArray(xml.Event.Attribute, 2){};
-        attrs.appendAssumeCapacity(.{ .name = .{ .local = "name" }, .value = self.name });
-        var char_buf: [1]u8 = undefined;
+        try writer.writeElementStart(.{ .local = "color" });
+        try writer.writeAttribute(.{ .local = "name" }, self.name);
         if (self.char) |char| {
-            char_buf[0] = char;
-            attrs.appendAssumeCapacity(.{ .name = .{ .local = "char" }, .value = &char_buf });
+            try writer.writeAttribute(.{ .local = "char" }, &[_]u8{char});
         }
-        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "color" }, .attributes = attrs.slice() } });
-        try writer.writeEvent(.{ .element_content = .{ .content = self.value } });
-        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "color" } } });
+        try writer.writeElementContent(self.value);
+        try writer.writeElementEnd(.{ .local = "color" });
     }
 };
 
@@ -437,13 +432,12 @@ pub const Clues = struct {
     }
 
     fn write(self: Clues, writer: anytype) !void {
-        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "clues" }, .attributes = &.{
-            .{ .name = .{ .local = "type" }, .value = @tagName(self.type) },
-        } } });
+        try writer.writeElementStart(.{ .local = "clues" });
+        try writer.writeAttribute(.{ .local = "type" }, @tagName(self.type));
         for (self.lines) |line| {
             try line.write(writer);
         }
-        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "clues" } } });
+        try writer.writeElementEnd(.{ .local = "clues" });
     }
 };
 
@@ -470,11 +464,11 @@ pub const Line = struct {
     }
 
     fn write(self: Line, writer: anytype) !void {
-        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "line" } } });
+        try writer.writeElementStart(.{ .local = "line" });
         for (self.counts) |count| {
             try count.write(writer);
         }
-        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "line" } } });
+        try writer.writeElementEnd(.{ .local = "line" });
     }
 };
 
@@ -504,15 +498,13 @@ pub const Count = struct {
     }
 
     fn write(self: Count, writer: anytype) !void {
-        // TODO: improve the XML writer API. This should be easier.
-        var attrs = std.BoundedArray(xml.Event.Attribute, 1){};
+        try writer.writeElementStart(.{ .local = "count" });
         if (self.color) |color| {
-            attrs.appendAssumeCapacity(.{ .name = .{ .local = "color" }, .value = color });
+            try writer.writeAttribute(.{ .local = "color" }, color);
         }
-        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "count" }, .attributes = attrs.slice() } });
         var buf: [32]u8 = undefined;
-        try writer.writeEvent(.{ .element_content = .{ .content = fmt.bufPrint(&buf, "{}", .{self.n}) catch unreachable } });
-        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "count" } } });
+        try writer.writeElementContent(fmt.bufPrint(&buf, "{}", .{self.n}) catch unreachable);
+        try writer.writeElementEnd(.{ .local = "count" });
     }
 };
 
@@ -555,14 +547,13 @@ pub const Solution = struct {
     }
 
     fn write(self: Solution, writer: anytype) !void {
-        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "solution" }, .attributes = &.{
-            .{ .name = .{ .local = "type" }, .value = @tagName(self.type) },
-        } } });
+        try writer.writeElementStart(.{ .local = "solution" });
+        try writer.writeAttribute(.{ .local = "type" }, @tagName(self.type));
         try self.image.write(writer);
         for (self.notes) |note| {
             try writeTextElement(writer, "note", note);
         }
-        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "solution" } } });
+        try writer.writeElementEnd(.{ .local = "solution" });
     }
 };
 
@@ -719,31 +710,29 @@ pub const Image = struct {
     }
 
     fn write(self: Image, writer: anytype) !void {
-        try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = "image" } } });
+        try writer.writeElementStart(.{ .local = "image" });
         var row_iter = mem.window([]const u8, self.chars, self.columns, self.columns);
         while (row_iter.next()) |row| {
-            try writer.writeEvent(.{ .element_content = .{ .content = "|" } });
+            try writer.writeElementContent("|");
             for (row) |options| {
                 if (options.len == 1) {
-                    try writer.writeEvent(.{ .element_content = .{ .content = &[_]u8{options[0]} } });
+                    try writer.writeElementContent(&[_]u8{options[0]});
                 } else {
-                    try writer.writeEvent(.{ .element_content = .{ .content = "[" } });
-                    for (options) |char| {
-                        try writer.writeEvent(.{ .element_content = .{ .content = &[_]u8{char} } });
-                    }
-                    try writer.writeEvent(.{ .element_content = .{ .content = "]" } });
+                    try writer.writeElementContent("[");
+                    try writer.writeElementContent(options);
+                    try writer.writeElementContent("]");
                 }
             }
-            try writer.writeEvent(.{ .element_content = .{ .content = "|\n" } });
+            try writer.writeElementContent("|\n");
         }
-        try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = "image" } } });
+        try writer.writeElementEnd(.{ .local = "image" });
     }
 };
 
-fn writeTextElement(writer: anytype, name: [:0]const u8, value: [:0]const u8) !void {
-    try writer.writeEvent(.{ .element_start = .{ .name = .{ .local = name } } });
-    try writer.writeEvent(.{ .element_content = .{ .content = value } });
-    try writer.writeEvent(.{ .element_end = .{ .name = .{ .local = name } } });
+fn writeTextElement(writer: anytype, name: []const u8, value: []const u8) !void {
+    try writer.writeElementStart(.{ .local = name });
+    try writer.writeElementContent(value);
+    try writer.writeElementEnd(.{ .local = name });
 }
 
 fn textContent(allocator: Allocator, children: anytype) ![:0]u8 {

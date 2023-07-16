@@ -128,7 +128,7 @@ const ApplicationWindow = extern struct {
         gtk.Window.OwnMethods(Self).setFocus(self, self.private().view.as(gtk.Widget));
 
         // Load an initial puzzle
-        const file = gio.File.newForPath("9381.pbn");
+        const file = gio.File.newForPath("puzzles/easy.pbn");
         defer file.unref();
         self.openFile(file);
     }
