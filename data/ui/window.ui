@@ -25,14 +25,14 @@
             </property>
             <child type="end">
               <object class="GtkMenuButton">
-                <property name="icon-name">open-menu</property>
+                <property name="icon-name">menu-symbolic</property>
                 <property name="tooltip-text">Main menu</property>
                 <property name="menu-model">main_menu</property>
               </object>
             </child>
             <child type="end">
               <object class="GtkMenuButton" id="info_menu_button">
-                <property name="icon-name">info-symbolic</property>
+                <property name="icon-name">about-symbolic</property>
                 <property name="tooltip-text">About this puzzle</property>
                 <property name="popover">
                   <object class="GtkPopover">

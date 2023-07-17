@@ -242,7 +242,6 @@ pub const View = extern struct {
         var offset: c_int = 0;
     };
 
-    const template = @embedFile("ui/view.ui");
     const rules = [_]Rule{
         .{ .inc = 1, .weight = 0.1 },
         .{ .inc = 5, .weight = 0.5 },
@@ -722,7 +721,7 @@ pub const View = extern struct {
         fn init(class: *Class) callconv(.C) void {
             class.implementDispose(&dispose);
             class.implementFinalize(&finalize);
-            class.setTemplateFromSlice(template);
+            class.setTemplateFromResource("/dev/ianjohnson/Nonograms/ui/view.ui");
             class.bindTemplateChildPrivate("drawing_area", .{});
             class.bindTemplateChildPrivate("color_picker", .{});
             solved.register(.{});
@@ -751,8 +750,6 @@ pub const ColorPicker = extern struct {
 
         var offset: c_int = 0;
     };
-
-    const template = @embedFile("ui/color-picker.ui");
 
     pub const getType = gobject.defineType(Self, .{
         .name = "NonogramsColorPicker",
@@ -851,7 +848,7 @@ pub const ColorPicker = extern struct {
         fn init(class: *Class) callconv(.C) void {
             class.implementDispose(&dispose);
             class.implementFinalize(&finalize);
-            class.setTemplateFromSlice(template);
+            class.setTemplateFromResource("/dev/ianjohnson/Nonograms/ui/color-picker.ui");
             class.bindTemplateChildPrivate("box", .{});
             color_selected.register(.{});
         }
@@ -881,7 +878,6 @@ pub const ColorButton = extern struct {
         var offset: c_int = 0;
     };
 
-    const template = @embedFile("ui/color-button.ui");
     const text_padding = 0.2;
 
     pub const getType = gobject.defineType(Self, .{
@@ -975,7 +971,7 @@ pub const ColorButton = extern struct {
         pub const Instance = Self;
 
         fn init(class: *Class) callconv(.C) void {
-            class.setTemplateFromSlice(template);
+            class.setTemplateFromResource("/dev/ianjohnson/Nonograms/ui/color-button.ui");
             class.bindTemplateChildPrivate("drawing_area", .{});
         }
 

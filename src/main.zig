@@ -96,8 +96,6 @@ const ApplicationWindow = extern struct {
         var offset: c_int = 0;
     };
 
-    const template = @embedFile("ui/window.ui");
-
     pub const getType = gobject.defineType(ApplicationWindow, .{
         .name = "NonogramsApplicationWindow",
         .instanceInit = &init,
@@ -392,7 +390,7 @@ const ApplicationWindow = extern struct {
 
         fn init(class: *Class) callconv(.C) void {
             class.implementFinalize(&finalize);
-            class.setTemplateFromSlice(template);
+            class.setTemplateFromResource("/dev/ianjohnson/Nonograms/ui/window.ui");
             class.bindTemplateChildPrivate("window_title", .{});
             class.bindTemplateChildPrivate("toast_overlay", .{});
             class.bindTemplateChildPrivate("stack", .{});

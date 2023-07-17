@@ -2,3 +2,4 @@ zig-cache
 zig-out
 *.pbn
 !puzzles/*.pbn
+gresources.c
