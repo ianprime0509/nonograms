@@ -10,6 +10,7 @@ const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayListUnmanaged = std.ArrayListUnmanaged;
 const c_allocator = std.heap.c_allocator;
 const glib = @import("glib");
+const default_puzzles = @import("puzzles").default_puzzles;
 const application_id = @import("main.zig").application_id;
 const pbn = @import("pbn.zig");
 const oom = @import("util.zig").oom;
@@ -26,7 +27,7 @@ pub fn deinit(self: *Library) void {
 }
 
 pub fn load() !Library {
-    const library_path = fs.path.join(c_allocator, &.{ mem.span(glib.getUserDataDir()), application_id, "library" }) catch oom();
+    const library_path = libraryPathAlloc();
     defer c_allocator.free(library_path);
     var library_dir = try fs.cwd().makeOpenPathIterable(library_path, .{});
     defer library_dir.close();
@@ -54,4 +55,19 @@ pub fn load() !Library {
     }
 
     return .{ .entries = entries.toOwnedSlice(allocator) catch oom(), .arena = arena };
+}
+
+pub fn copyDefaultPuzzles() !void {
+    const library_path = libraryPathAlloc();
+    defer c_allocator.free(library_path);
+    var library_dir = try fs.cwd().makeOpenPath(library_path, .{});
+    defer library_dir.close();
+
+    for (default_puzzles) |default_puzzle| {
+        try library_dir.writeFile(default_puzzle.name, default_puzzle.data);
+    }
+}
+
+fn libraryPathAlloc() []u8 {
+    return fs.path.join(c_allocator, &.{ mem.span(glib.getUserDataDir()), application_id }) catch oom();
 }

@@ -150,10 +150,20 @@ const ApplicationWindow = extern struct {
         if (self.private().library) |*library| {
             library.deinit();
         }
-        const library = Library.load() catch {
+        var library = Library.load() catch {
             self.private().toast_overlay.addToast(adw.Toast.new("Failed to read library"));
             return;
         };
+        if (library.entries.len == 0) {
+            if (Library.copyDefaultPuzzles()) {
+                library = Library.load() catch {
+                    self.private().toast_overlay.addToast(adw.Toast.new("Failed to read library"));
+                    return;
+                };
+            } else |_| {
+                self.private().toast_overlay.addToast(adw.Toast.new("Failed to add default puzzles to library"));
+            }
+        }
         self.private().library = library;
         const library_list = self.private().library_list;
         while (library_list.getFirstChild()) |child| {

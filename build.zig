@@ -29,6 +29,7 @@ pub fn build(b: *std.Build) !void {
     exe.addModule("pango", zig_gobject.addBindingModule(b, exe, "pango-1.0"));
     exe.addModule("pangocairo", zig_gobject.addBindingModule(b, exe, "pangocairo-1.0"));
     exe.addModule("adw", zig_gobject.addBindingModule(b, exe, "adw-1"));
+    exe.addAnonymousModule("puzzles", .{ .source_file = .{ .path = "puzzles/puzzles.zig" } });
     exe.addCSourceFileSource(.{ .source = gresources_c, .args = &.{} });
     b.installArtifact(exe);
 
