@@ -5,15 +5,17 @@ const gio = @import("gio");
 const gtk = @import("gtk");
 const adw = @import("adw");
 const pbn = @import("pbn.zig");
-const util = @import("util.zig");
 const view = @import("view.zig");
 const ArrayListUnmanaged = std.ArrayListUnmanaged;
 const ColorButton = view.ColorButton;
 const ColorPicker = view.ColorPicker;
+const Library = @import("Library.zig");
 const View = view.View;
 const c_allocator = std.heap.c_allocator;
 const mem = std.mem;
-const oom = util.oom;
+const oom = @import("util.zig").oom;
+
+pub const application_id = "dev.ianjohnson.Nonograms";
 
 pub fn main() !void {
     _ = Application.getType();
@@ -38,7 +40,7 @@ const Application = extern struct {
 
     pub fn new() *Self {
         return Self.newWith(.{
-            .application_id = "dev.ianjohnson.Nonograms",
+            .application_id = application_id,
             .flags = gio.ApplicationFlags{},
         });
     }
@@ -75,9 +77,13 @@ const ApplicationWindow = extern struct {
         window_title: *adw.WindowTitle,
         toast_overlay: *adw.ToastOverlay,
         stack: *gtk.Stack,
+        library_list: *gtk.ListBox,
         puzzle_set_title: *gtk.Label,
         puzzle_list: *gtk.ListBox,
+        library: ?Library,
         view: *View,
+        library_menu_button: *gtk.Button,
+        info_menu_button: *gtk.MenuButton,
         info_title: *gtk.Label,
         info_author: *gtk.Label,
         info_copyright: *gtk.Label,
@@ -120,6 +126,8 @@ const ApplicationWindow = extern struct {
         self.addAction(about.as(gio.Action));
 
         _ = self.connectCloseRequest(?*anyopaque, &handleCloseRequest, null, .{});
+        _ = self.private().library_menu_button.connectClicked(*Self, &handleLibraryMenuButtonClicked, self, .{});
+        _ = self.private().library_list.connectRowActivated(*Self, &handleLibraryRowActivated, self, .{});
         _ = self.private().puzzle_list.connectRowActivated(*Self, &handlePuzzleRowActivated, self, .{});
         _ = self.private().view.connectSolved(*Self, &handlePuzzleSolved, self, .{});
 
@@ -127,15 +135,43 @@ const ApplicationWindow = extern struct {
         // either gtk_window_set_focus or gtk_root_set_focus
         gtk.Window.OwnMethods(Self).setFocus(self, self.private().view.as(gtk.Widget));
 
-        // Load an initial puzzle
-        const file = gio.File.newForPath("puzzles/easy.pbn");
-        defer file.unref();
-        self.openFile(file);
+        self.loadLibrary();
     }
 
     fn finalize(self: *Self) callconv(.C) void {
-        self.deinitPuzzleSet();
+        if (self.private().library) |*library| {
+            library.deinit();
+        }
+        if (self.private().puzzle_set) |*puzzle_set| {
+            puzzle_set.deinit();
+        }
         Class.parent.callFinalize(self.as(gobject.Object));
+    }
+
+    fn loadLibrary(self: *Self) void {
+        if (self.private().library) |*library| {
+            library.deinit();
+        }
+        const library = Library.load() catch {
+            self.private().toast_overlay.addToast(adw.Toast.new("Failed to read library"));
+            return;
+        };
+        self.private().library = library;
+        const library_list = self.private().library_list;
+        while (library_list.getFirstChild()) |child| {
+            library_list.remove(child);
+        }
+        for (library.entries) |entry| {
+            const action_row = adw.ActionRow.new();
+            action_row.setTitle(entry.title orelse "Untitled");
+            action_row.setActivatable(1);
+            library_list.append(action_row.as(gtk.Widget));
+        }
+
+        self.private().stack.setVisibleChildName("library");
+        self.private().library_menu_button.setVisible(0);
+        self.private().info_menu_button.setVisible(0);
+        self.private().clear_action.setEnabled(0);
     }
 
     fn openFile(self: *Self, file: *gio.File) void {
@@ -156,7 +192,9 @@ const ApplicationWindow = extern struct {
     }
 
     fn loadPuzzleSet(self: *Self, puzzle_set: pbn.PuzzleSet) void {
-        self.deinitPuzzleSet();
+        if (self.private().puzzle_set) |*ps| {
+            ps.deinit();
+        }
         self.private().puzzle_set = puzzle_set;
         self.private().puzzle_index = null;
         const puzzle_list = self.private().puzzle_list;
@@ -192,7 +230,10 @@ const ApplicationWindow = extern struct {
             action_row.setActivatable(1);
             puzzle_list.append(action_row.as(gtk.Widget));
         }
+
         self.private().stack.setVisibleChildName("puzzle_selector");
+        self.private().library_menu_button.setVisible(1);
+        self.private().info_menu_button.setVisible(1);
         self.private().clear_action.setEnabled(0);
     }
 
@@ -221,13 +262,11 @@ const ApplicationWindow = extern struct {
             self.private().info_source.setVisible(0);
         }
         self.private().view.load(puzzle);
-        self.private().stack.setVisibleChildName("view");
-        self.private().clear_action.setEnabled(1);
-    }
 
-    fn deinitPuzzleSet(self: *Self) void {
-        const puzzle_set = &(self.private().puzzle_set orelse return);
-        puzzle_set.deinit();
+        self.private().stack.setVisibleChildName("view");
+        self.private().library_menu_button.setVisible(1);
+        self.private().info_menu_button.setVisible(1);
+        self.private().clear_action.setEnabled(1);
     }
 
     fn handleOpenAction(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
@@ -268,6 +307,22 @@ const ApplicationWindow = extern struct {
     fn handleCloseRequest(self: *Self, _: ?*anyopaque) callconv(.C) c_int {
         self.saveCurrentImage();
         return 0;
+    }
+
+    fn handleLibraryMenuButtonClicked(_: *gtk.Button, self: *Self) callconv(.C) void {
+        self.saveCurrentImage();
+        self.loadLibrary();
+    }
+
+    fn handleLibraryRowActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Self) callconv(.C) void {
+        const library = self.private().library orelse return;
+        const index: usize = @intCast(row.getIndex());
+        if (index >= library.entries.len) {
+            return;
+        }
+        const file = gio.File.newForPath(library.entries[index].path);
+        defer file.unref();
+        self.openFile(file);
     }
 
     fn handlePuzzleRowActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Self) callconv(.C) void {
@@ -341,8 +396,11 @@ const ApplicationWindow = extern struct {
             class.bindTemplateChildPrivate("window_title", .{});
             class.bindTemplateChildPrivate("toast_overlay", .{});
             class.bindTemplateChildPrivate("stack", .{});
+            class.bindTemplateChildPrivate("library_list", .{});
             class.bindTemplateChildPrivate("puzzle_set_title", .{});
             class.bindTemplateChildPrivate("puzzle_list", .{});
+            class.bindTemplateChildPrivate("library_menu_button", .{});
+            class.bindTemplateChildPrivate("info_menu_button", .{});
             class.bindTemplateChildPrivate("info_title", .{});
             class.bindTemplateChildPrivate("info_author", .{});
             class.bindTemplateChildPrivate("info_copyright", .{});

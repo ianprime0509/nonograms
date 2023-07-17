@@ -7,6 +7,11 @@ pub fn build(b: *std.Build) !void {
 
     const xml = b.dependency("xml", .{}).module("xml");
 
+    const compile_resources = b.addSystemCommand(&.{ "glib-compile-resources", "--generate-source", "--target" });
+    const gresources_c = compile_resources.addOutputFileArg("gresources.c");
+    compile_resources.addArg("gresources.xml");
+    compile_resources.cwd = "data";
+
     const exe = b.addExecutable(.{
         .name = "nonograms",
         .root_source_file = .{ .path = "src/main.zig" },
@@ -24,6 +29,7 @@ pub fn build(b: *std.Build) !void {
     exe.addModule("pango", zig_gobject.addBindingModule(b, exe, "pango-1.0"));
     exe.addModule("pangocairo", zig_gobject.addBindingModule(b, exe, "pangocairo-1.0"));
     exe.addModule("adw", zig_gobject.addBindingModule(b, exe, "adw-1"));
+    exe.addCSourceFileSource(.{ .source = gresources_c, .args = &.{} });
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);

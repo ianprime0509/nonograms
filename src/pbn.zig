@@ -32,14 +32,18 @@ pub const PuzzleSet = struct {
 
     pub fn parseBytes(allocator: Allocator, bytes: []const u8) Error!PuzzleSet {
         var stream = std.io.fixedBufferStream(bytes);
-        var r = xml.reader(allocator, stream.reader(), xml.encoding.Utf8Decoder{}, .{
+        return try parseReader(allocator, stream.reader());
+    }
+
+    pub fn parseReader(allocator: Allocator, data_reader: anytype) (Error || @TypeOf(data_reader).Error)!PuzzleSet {
+        var reader = xml.reader(allocator, data_reader, xml.encoding.Utf8Decoder{}, .{
             // Normalization doesn't matter for anything we're doing
             .enable_normalization = false,
             // The PBN format does not use namespaces
             .namespace_aware = false,
         });
-        defer r.deinit();
-        return parseXml(allocator, &r) catch |err| switch (err) {
+        defer reader.deinit();
+        return parseXml(allocator, &reader) catch |err| switch (err) {
             // TODO: https://github.com/ianprime0509/zig-xml/issues/21
             error.CannotUndeclareNsPrefix,
             error.InvalidNsBinding,
@@ -94,6 +98,7 @@ pub const PuzzleSet = struct {
 
     fn parseInternal(a: Allocator, children: anytype) !PuzzleSet {
         var arena = ArenaAllocator.init(a);
+        errdefer arena.deinit();
         const allocator = arena.allocator();
 
         var source: ?[:0]const u8 = null;
