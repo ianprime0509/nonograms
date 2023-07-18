@@ -14,15 +14,20 @@ const View = view.View;
 const c_allocator = std.heap.c_allocator;
 const mem = std.mem;
 const oom = @import("util.zig").oom;
+const gettext = @import("gettext.zig").gettext;
 
 pub const application_id = "dev.ianjohnson.Nonograms";
 
 pub fn main() !void {
+    try @import("gettext.zig").init();
+
+    // Ensure types are defined
     _ = Application.getType();
     _ = ApplicationWindow.getType();
     _ = ColorButton.getType();
     _ = ColorPicker.getType();
     _ = View.getType();
+
     const status = Application.new().run(@intCast(std.os.argv.len), std.os.argv.ptr);
     std.os.exit(@intCast(status));
 }
@@ -151,17 +156,17 @@ const ApplicationWindow = extern struct {
             library.deinit();
         }
         var library = Library.load() catch {
-            self.private().toast_overlay.addToast(adw.Toast.new("Failed to read library"));
+            self.private().toast_overlay.addToast(adw.Toast.new(gettext("Failed to read library")));
             return;
         };
         if (library.entries.len == 0) {
             if (Library.copyDefaultPuzzles()) {
                 library = Library.load() catch {
-                    self.private().toast_overlay.addToast(adw.Toast.new("Failed to read library"));
+                    self.private().toast_overlay.addToast(adw.Toast.new(gettext("Failed to read library")));
                     return;
                 };
             } else |_| {
-                self.private().toast_overlay.addToast(adw.Toast.new("Failed to add default puzzles to library"));
+                self.private().toast_overlay.addToast(adw.Toast.new(gettext("Failed to add default puzzles to library")));
             }
         }
         self.private().library = library;
@@ -171,7 +176,7 @@ const ApplicationWindow = extern struct {
         }
         for (library.entries) |entry| {
             const action_row = adw.ActionRow.new();
-            action_row.setTitle(entry.title orelse "Untitled");
+            action_row.setTitle(entry.title orelse gettext("Untitled"));
             action_row.setActivatable(1);
             library_list.append(action_row.as(gtk.Widget));
         }
@@ -193,7 +198,7 @@ const ApplicationWindow = extern struct {
         var size: usize = undefined;
         const bytes = contents.getData(&size);
         var puzzle_set = pbn.PuzzleSet.parseBytes(c_allocator, bytes[0..size]) catch {
-            self.private().toast_overlay.addToast(adw.Toast.new("Failed to load puzzle"));
+            self.private().toast_overlay.addToast(adw.Toast.new(gettext("Failed to load puzzle")));
             return;
         };
         self.loadPuzzleSet(puzzle_set);
@@ -210,8 +215,8 @@ const ApplicationWindow = extern struct {
             puzzle_list.remove(child);
         }
         self.private().window_title.setSubtitle(puzzle_set.title orelse "");
-        self.private().puzzle_set_title.setLabel(puzzle_set.title orelse "Puzzles");
-        self.private().info_title.setLabel(puzzle_set.title orelse "Untitled puzzle set");
+        self.private().puzzle_set_title.setLabel(puzzle_set.title orelse gettext("Puzzles"));
+        self.private().info_title.setLabel(puzzle_set.title orelse gettext("Untitled puzzle set"));
         if (puzzle_set.author) |author| {
             self.private().info_author.setLabel(author);
             self.private().info_author.setVisible(1);
@@ -225,16 +230,14 @@ const ApplicationWindow = extern struct {
             self.private().info_copyright.setVisible(0);
         }
         if (puzzle_set.source) |source| {
-            const source_text = std.fmt.allocPrintZ(c_allocator, "From {s}", .{source}) catch oom();
-            defer c_allocator.free(source_text);
-            self.private().info_source.setLabel(source_text);
+            self.private().info_source.setLabel(source);
             self.private().info_source.setVisible(1);
         } else {
             self.private().info_source.setVisible(0);
         }
         for (puzzle_set.puzzles) |puzzle| {
             const action_row = adw.ActionRow.new();
-            action_row.setTitle(puzzle.title orelse "Untitled");
+            action_row.setTitle(puzzle.title orelse gettext("Untitled"));
             action_row.setActivatable(1);
             puzzle_list.append(action_row.as(gtk.Widget));
         }
@@ -248,7 +251,7 @@ const ApplicationWindow = extern struct {
     fn loadPuzzle(self: *Self, puzzle: pbn.Puzzle) void {
         const puzzle_set = self.private().puzzle_set orelse return;
         self.private().window_title.setSubtitle(puzzle.title orelse "");
-        self.private().info_title.setLabel(puzzle.title orelse "Untitled puzzle");
+        self.private().info_title.setLabel(puzzle.title orelse gettext("Untitled puzzle"));
         if (puzzle.author orelse puzzle_set.author) |author| {
             self.private().info_author.setLabel(author);
             self.private().info_author.setVisible(1);
@@ -262,9 +265,7 @@ const ApplicationWindow = extern struct {
             self.private().info_copyright.setVisible(0);
         }
         if (puzzle.source orelse puzzle_set.source) |source| {
-            const source_text = std.fmt.allocPrintZ(c_allocator, "From {s}", .{source}) catch oom();
-            defer c_allocator.free(source_text);
-            self.private().info_source.setLabel(source_text);
+            self.private().info_source.setLabel(source);
             self.private().info_source.setVisible(1);
         } else {
             self.private().info_source.setVisible(0);
@@ -278,7 +279,13 @@ const ApplicationWindow = extern struct {
     }
 
     fn handleOpenAction(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
-        const chooser = gtk.FileChooserNative.new("Open Puzzle", self.as(gtk.Window), .open, "_Open", "_Cancel");
+        const chooser = gtk.FileChooserNative.new(
+            gettext("Open Puzzle"),
+            self.as(gtk.Window),
+            .open,
+            gettext("_Open"),
+            gettext("_Cancel"),
+        );
         const filter = gtk.FileFilter.new();
         filter.setName("PBN XML");
         filter.addPattern("*.pbn");
@@ -294,7 +301,7 @@ const ApplicationWindow = extern struct {
 
     fn handleAboutAction(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
         const about = adw.AboutWindow.new();
-        about.setApplicationName("Nonograms");
+        about.setApplicationName(gettext("Nonograms"));
         about.setDeveloperName("Ian Johnson");
         about.setCopyright("© 2023 Ian Johnson");
         about.setWebsite("https://github.com/ianprime0509/nonograms");

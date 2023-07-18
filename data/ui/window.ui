@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
   <template class="NonogramsApplicationWindow" parent="AdwApplicationWindow">
-    <property name="title">Nonograms</property>
+    <property name="title" translatable="yes">Nonograms</property>
     <property name="default-width">600</property>
     <property name="default-height">600</property>
     <style>
@@ -20,20 +20,20 @@
             </child>
             <property name="title-widget">
               <object class="AdwWindowTitle" id="window_title">
-                <property name="title">Nonograms</property>
+                <property name="title" translatable="yes">Nonograms</property>
               </object>
             </property>
             <child type="end">
               <object class="GtkMenuButton">
                 <property name="icon-name">menu-symbolic</property>
-                <property name="tooltip-text">Main menu</property>
+                <property name="tooltip-text" translatable="yes">Main menu</property>
                 <property name="menu-model">main_menu</property>
               </object>
             </child>
             <child type="end">
               <object class="GtkMenuButton" id="info_menu_button">
                 <property name="icon-name">about-symbolic</property>
-                <property name="tooltip-text">About this puzzle</property>
+                <property name="tooltip-text" translatable="yes">About this puzzle</property>
                 <property name="popover">
                   <object class="GtkPopover">
                     <child>
@@ -97,7 +97,7 @@
                         <property name="margin-end">10</property>
                         <child>
                           <object class="GtkLabel">
-                            <property name="label">Library</property>
+                            <property name="label" translatable="yes">Library</property>
                             <style>
                               <class name="title-1" />
                             </style>
@@ -130,7 +130,7 @@
                         <property name="margin-end">10</property>
                         <child>
                           <object class="GtkLabel" id="puzzle_set_title">
-                            <property name="label">Puzzles</property>
+                            <property name="label" translatable="yes">Puzzles</property>
                             <style>
                               <class name="title-1" />
                             </style>
@@ -175,19 +175,19 @@
   <menu id="main_menu">
     <section>
       <item>
-        <attribute name="label">Open</attribute>
+        <attribute name="label" translatable="yes">Open</attribute>
         <attribute name="action">win.open</attribute>
       </item>
     </section>
     <section>
       <item>
-        <attribute name="label">Clear</attribute>
+        <attribute name="label" translatable="yes">Clear</attribute>
         <attribute name="action">win.clear</attribute>
       </item>
     </section>
     <section>
       <item>
-        <attribute name="label">About</attribute>
+        <attribute name="label" translatable="yes">About</attribute>
         <attribute name="action">win.about</attribute>
       </item>
     </section>
