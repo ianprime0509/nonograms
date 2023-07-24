@@ -1,0 +1,86 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR Nonograms contributors
+# This file is distributed under the same license as the Nonograms package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: Nonograms 0.0.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2023-07-23 20:43-0400\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=CHARSET\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: data/ui/window.ui:4 data/ui/window.ui:23 src/main.zig:315
+msgid "Nonograms"
+msgstr ""
+
+#: data/ui/window.ui:29
+msgid "Main menu"
+msgstr ""
+
+#: data/ui/window.ui:36
+msgid "About this puzzle"
+msgstr ""
+
+#: data/ui/window.ui:100
+msgid "Library"
+msgstr ""
+
+#: data/ui/window.ui:133 src/main.zig:229
+msgid "Puzzles"
+msgstr ""
+
+#: data/ui/window.ui:178
+msgid "Open"
+msgstr ""
+
+#: data/ui/window.ui:184
+msgid "Clear"
+msgstr ""
+
+#: data/ui/window.ui:190
+msgid "About"
+msgstr ""
+
+#: src/main.zig:170 src/main.zig:176
+msgid "Failed to read library"
+msgstr ""
+
+#: src/main.zig:180
+msgid "Failed to add default puzzles to library"
+msgstr ""
+
+#: src/main.zig:190 src/main.zig:251
+msgid "Untitled"
+msgstr ""
+
+#: src/main.zig:212
+msgid "Failed to load puzzle"
+msgstr ""
+
+#: src/main.zig:230
+msgid "Untitled puzzle set"
+msgstr ""
+
+#: src/main.zig:265
+msgid "Untitled puzzle"
+msgstr ""
+
+#: src/main.zig:294
+msgid "Open Puzzle"
+msgstr ""
+
+#: src/main.zig:297
+msgid "_Open"
+msgstr ""
+
+#: src/main.zig:298
+msgid "_Cancel"
+msgstr ""

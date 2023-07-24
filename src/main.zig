@@ -4,6 +4,8 @@ const gobject = @import("gobject");
 const gio = @import("gio");
 const gtk = @import("gtk");
 const adw = @import("adw");
+const intl_raw = @import("libintl");
+const intl = intl_raw.wrappers;
 const pbn = @import("pbn.zig");
 const view = @import("view.zig");
 const ArrayListUnmanaged = std.ArrayListUnmanaged;
@@ -12,14 +14,23 @@ const ColorPicker = view.ColorPicker;
 const Library = @import("Library.zig");
 const View = view.View;
 const c_allocator = std.heap.c_allocator;
+const fs = std.fs;
 const mem = std.mem;
 const oom = @import("util.zig").oom;
-const gettext = @import("gettext.zig").gettext;
 
 pub const application_id = "dev.ianjohnson.Nonograms";
+const package = "nonograms";
 
 pub fn main() !void {
-    try @import("gettext.zig").init();
+    // Initialize libintl
+    // TODO: figure out what path to use here (or rewrite gettext in Zig and avoid all this complexity???)
+    const cwd = try fs.cwd().realpathAlloc(c_allocator, ".");
+    defer c_allocator.free(cwd);
+    const locale_path = try fs.path.joinZ(c_allocator, &.{ cwd, "locale" });
+    defer c_allocator.free(locale_path);
+    _ = intl_raw.bindtextdomain(package, locale_path);
+    _ = intl_raw.bindTextdomainCodeset(package, "UTF-8");
+    _ = intl_raw.textdomain(package);
 
     // Ensure types are defined
     _ = Application.getType();
@@ -156,17 +167,17 @@ const ApplicationWindow = extern struct {
             library.deinit();
         }
         var library = Library.load() catch {
-            self.private().toast_overlay.addToast(adw.Toast.new(gettext("Failed to read library")));
+            self.private().toast_overlay.addToast(adw.Toast.new(intl.gettext("Failed to read library")));
             return;
         };
         if (library.entries.len == 0) {
             if (Library.copyDefaultPuzzles()) {
                 library = Library.load() catch {
-                    self.private().toast_overlay.addToast(adw.Toast.new(gettext("Failed to read library")));
+                    self.private().toast_overlay.addToast(adw.Toast.new(intl.gettext("Failed to read library")));
                     return;
                 };
             } else |_| {
-                self.private().toast_overlay.addToast(adw.Toast.new(gettext("Failed to add default puzzles to library")));
+                self.private().toast_overlay.addToast(adw.Toast.new(intl.gettext("Failed to add default puzzles to library")));
             }
         }
         self.private().library = library;
@@ -176,7 +187,7 @@ const ApplicationWindow = extern struct {
         }
         for (library.entries) |entry| {
             const action_row = adw.ActionRow.new();
-            action_row.setTitle(entry.title orelse gettext("Untitled"));
+            action_row.setTitle(entry.title orelse intl.gettext("Untitled"));
             action_row.setActivatable(1);
             library_list.append(action_row.as(gtk.Widget));
         }
@@ -198,7 +209,7 @@ const ApplicationWindow = extern struct {
         var size: usize = undefined;
         const bytes = contents.getData(&size);
         var puzzle_set = pbn.PuzzleSet.parseBytes(c_allocator, bytes[0..size]) catch {
-            self.private().toast_overlay.addToast(adw.Toast.new(gettext("Failed to load puzzle")));
+            self.private().toast_overlay.addToast(adw.Toast.new(intl.gettext("Failed to load puzzle")));
             return;
         };
         self.loadPuzzleSet(puzzle_set);
@@ -215,8 +226,8 @@ const ApplicationWindow = extern struct {
             puzzle_list.remove(child);
         }
         self.private().window_title.setSubtitle(puzzle_set.title orelse "");
-        self.private().puzzle_set_title.setLabel(puzzle_set.title orelse gettext("Puzzles"));
-        self.private().info_title.setLabel(puzzle_set.title orelse gettext("Untitled puzzle set"));
+        self.private().puzzle_set_title.setLabel(puzzle_set.title orelse intl.gettext("Puzzles"));
+        self.private().info_title.setLabel(puzzle_set.title orelse intl.gettext("Untitled puzzle set"));
         if (puzzle_set.author) |author| {
             self.private().info_author.setLabel(author);
             self.private().info_author.setVisible(1);
@@ -237,7 +248,7 @@ const ApplicationWindow = extern struct {
         }
         for (puzzle_set.puzzles) |puzzle| {
             const action_row = adw.ActionRow.new();
-            action_row.setTitle(puzzle.title orelse gettext("Untitled"));
+            action_row.setTitle(puzzle.title orelse intl.gettext("Untitled"));
             action_row.setActivatable(1);
             puzzle_list.append(action_row.as(gtk.Widget));
         }
@@ -251,7 +262,7 @@ const ApplicationWindow = extern struct {
     fn loadPuzzle(self: *Self, puzzle: pbn.Puzzle) void {
         const puzzle_set = self.private().puzzle_set orelse return;
         self.private().window_title.setSubtitle(puzzle.title orelse "");
-        self.private().info_title.setLabel(puzzle.title orelse gettext("Untitled puzzle"));
+        self.private().info_title.setLabel(puzzle.title orelse intl.gettext("Untitled puzzle"));
         if (puzzle.author orelse puzzle_set.author) |author| {
             self.private().info_author.setLabel(author);
             self.private().info_author.setVisible(1);
@@ -280,11 +291,11 @@ const ApplicationWindow = extern struct {
 
     fn handleOpenAction(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
         const chooser = gtk.FileChooserNative.new(
-            gettext("Open Puzzle"),
+            intl.gettext("Open Puzzle"),
             self.as(gtk.Window),
             .open,
-            gettext("_Open"),
-            gettext("_Cancel"),
+            intl.gettext("_Open"),
+            intl.gettext("_Cancel"),
         );
         const filter = gtk.FileFilter.new();
         filter.setName("PBN XML");
@@ -301,7 +312,7 @@ const ApplicationWindow = extern struct {
 
     fn handleAboutAction(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.C) void {
         const about = adw.AboutWindow.new();
-        about.setApplicationName(gettext("Nonograms"));
+        about.setApplicationName(intl.gettext("Nonograms"));
         about.setDeveloperName("Ian Johnson");
         about.setCopyright("© 2023 Ian Johnson");
         about.setWebsite("https://github.com/ianprime0509/nonograms");
