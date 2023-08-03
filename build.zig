@@ -31,7 +31,7 @@ pub fn build(b: *std.Build) !void {
     exe.addModule("adw", zig_gobject.addBindingModule(b, exe, "adw-1"));
     exe.addModule("libintl", zig_gobject.addBindingModule(b, exe, "libintl-0.0"));
     exe.addAnonymousModule("puzzles", .{ .source_file = .{ .path = "puzzles/puzzles.zig" } });
-    exe.addCSourceFileSource(.{ .source = gresources_c, .args = &.{} });
+    exe.addCSourceFile(.{ .file = gresources_c, .flags = &.{} });
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
