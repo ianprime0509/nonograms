@@ -256,8 +256,7 @@ pub const View = extern struct {
         .private = .{ .Type = Private, .offset = &Private.offset },
     });
 
-    // TODO: dummy c_uint parameter to avoid compiler bug with empty tuple type (issue TBD)
-    const solved = gobject.defineSignal("solved", *Self, &.{c_uint}, void);
+    const solved = gobject.defineSignal("solved", *Self, &.{}, void);
     pub const connectSolved = solved.connect;
 
     pub fn new() *Self {
@@ -278,7 +277,6 @@ pub const View = extern struct {
         _ = drag.connectDragUpdate(*Self, &handleDragUpdate, self, .{});
         drawing_area.addController(drag.as(gtk.EventController));
 
-        // Does not currently work: https://gitlab.gnome.org/GNOME/gtk/-/issues/5561
         const drag_secondary = gtk.GestureDrag.new();
         drag_secondary.setButton(gdk.BUTTON_SECONDARY);
         _ = drag_secondary.connectDragBegin(*Self, &handleDragBeginSecondary, self, .{});
@@ -700,7 +698,7 @@ pub const View = extern struct {
         state.tile_colors[index] = color;
         if (state.isSolved()) {
             state.solved = true;
-            solved.emit(self, null, .{0}, null);
+            solved.emit(self, null, .{}, null);
         }
         self.private().drawing_area.queueDraw();
     }

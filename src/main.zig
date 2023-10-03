@@ -361,7 +361,7 @@ const ApplicationWindow = extern struct {
         self.loadPuzzle(puzzle_set.puzzles[index]);
     }
 
-    fn handlePuzzleSolved(_: *View, _: u32, self: *Self) callconv(.C) void {
+    fn handlePuzzleSolved(_: *View, self: *Self) callconv(.C) void {
         const puzzle_set = self.private().puzzle_set orelse return;
         const puzzle = puzzle_set.puzzles[self.private().puzzle_index orelse return];
         self.private().toast_overlay.addToast(adw.Toast.new(puzzle.description orelse "Congratulations!"));
