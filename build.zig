@@ -10,7 +10,7 @@ pub fn build(b: *std.Build) !void {
     const compile_resources = b.addSystemCommand(&.{ "glib-compile-resources", "--generate-source", "--target" });
     const gresources_c = compile_resources.addOutputFileArg("gresources.c");
     compile_resources.addArg("gresources.xml");
-    compile_resources.cwd = "data";
+    compile_resources.cwd = .{ .path = "data" };
 
     const exe = b.addExecutable(.{
         .name = "nonograms",
