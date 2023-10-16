@@ -36,7 +36,8 @@ pub const PuzzleSet = struct {
     }
 
     pub fn parseReader(allocator: Allocator, data_reader: anytype) (Error || @TypeOf(data_reader).Error)!PuzzleSet {
-        var reader = xml.reader(allocator, data_reader, xml.encoding.Utf8Decoder{}, .{
+        var reader = xml.reader(allocator, data_reader, .{
+            .DecoderType = xml.encoding.Utf8Decoder,
             // Normalization doesn't matter for anything we're doing
             .enable_normalization = false,
             // The PBN format does not use namespaces
@@ -44,13 +45,6 @@ pub const PuzzleSet = struct {
         });
         defer reader.deinit();
         return parseXml(allocator, &reader) catch |err| switch (err) {
-            // TODO: https://github.com/ianprime0509/zig-xml/issues/21
-            error.CannotUndeclareNsPrefix,
-            error.InvalidNsBinding,
-            error.InvalidQName,
-            error.UndeclaredNsPrefix,
-            error.QNameNotAllowed,
-            => unreachable,
             error.DoctypeNotSupported,
             error.DuplicateAttribute,
             error.InvalidCharacterReference,
