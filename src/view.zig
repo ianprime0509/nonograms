@@ -530,15 +530,15 @@ pub const View = extern struct {
         cr.setSourceRgba(0, 0, 0, 0.1);
 
         if (hover_tile.row >= state.max_column_hints and hover_tile.row < state.max_column_hints + state.row_hints.len) {
-            var row_start = dims.tilePosition(hover_tile.row, 0);
-            var row_end = dims.tilePosition(hover_tile.row, state.max_row_hints + state.column_hints.len);
+            const row_start = dims.tilePosition(hover_tile.row, 0);
+            const row_end = dims.tilePosition(hover_tile.row, state.max_row_hints + state.column_hints.len);
             cr.rectangle(row_start.x, row_start.y, row_end.x - row_start.x, dims.tile_size);
             cr.fill();
         }
 
         if (hover_tile.column >= state.max_row_hints and hover_tile.column < state.max_row_hints + state.column_hints.len) {
-            var col_start = dims.tilePosition(0, hover_tile.column);
-            var col_end = dims.tilePosition(state.max_column_hints + state.row_hints.len, hover_tile.column);
+            const col_start = dims.tilePosition(0, hover_tile.column);
+            const col_end = dims.tilePosition(state.max_column_hints + state.row_hints.len, hover_tile.column);
             cr.rectangle(col_start.x, col_start.y, dims.tile_size, col_end.y - col_start.y);
             cr.fill();
         }

@@ -14,12 +14,12 @@
     },
     .dependencies = .{
         .xml = .{
-            .url = "git+https://github.com/ianprime0509/zig-xml#2e44089b9d43fa2228aa834ae4d58d2ee23134fa",
-            .hash = "122047b08d88715d6e0e0c364c9e055e9d755778df984227b5b8dc2c93514657a9b5",
+            .url = "git+https://github.com/ianprime0509/zig-xml#e593568299f3cb64142fd1e6c42e62acca652b57",
+            .hash = "1220a624fbc2fca71b22d79ee0ed14cbd4e97e8072654eade48f1b137329ceb66175",
         },
         .gobject = .{
-            .url = "git+https://github.com/ianprime0509/zig-gobject#ce95e7a026ab703d11ccc03bc23f55cef1cddac3",
-            .hash = "1220d609a00bc3bad114b7dfff55942785dff17b124ad2dcd5c6c26ad1c271880dab",
+            .url = "git+https://github.com/ianprime0509/zig-gobject#58d16ef4d9b950236257a6388f87ab405780721a",
+            .hash = "122098d2764535d85ebcafd3f2f9892857c0dd2b13569fcf6244c60859c43206c49b",
         },
     },
 }
