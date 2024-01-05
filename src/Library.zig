@@ -29,7 +29,7 @@ pub fn deinit(self: *Library) void {
 pub fn load() !Library {
     const library_path = libraryPathAlloc();
     defer c_allocator.free(library_path);
-    var library_dir = try fs.cwd().makeOpenPathIterable(library_path, .{});
+    var library_dir = try fs.cwd().makeOpenPath(library_path, .{ .iterate = true });
     defer library_dir.close();
 
     var arena = ArenaAllocator.init(c_allocator);
@@ -43,7 +43,7 @@ pub fn load() !Library {
             continue;
         }
 
-        const child_file = library_dir.dir.openFile(child.name, .{}) catch continue;
+        const child_file = library_dir.openFile(child.name, .{}) catch continue;
         defer child_file.close();
         var child_buf_reader = io.bufferedReader(child_file.reader());
         var puzzle_set = pbn.PuzzleSet.parseReader(allocator, child_buf_reader.reader()) catch continue;

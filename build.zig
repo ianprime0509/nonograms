@@ -1,10 +1,10 @@
 const std = @import("std");
-const gobject = @import("gobject");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const gobject = b.dependency("gobject", .{});
     const xml = b.dependency("xml", .{}).module("xml");
 
     const compile_resources = b.addSystemCommand(&.{ "glib-compile-resources", "--generate-source", "--target" });
@@ -19,18 +19,19 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     exe.linkLibC();
-    exe.addModule("xml", xml);
-    exe.addModule("glib", gobject.addBindingModule(b, exe, "glib-2.0"));
-    exe.addModule("gobject", gobject.addBindingModule(b, exe, "gobject-2.0"));
-    exe.addModule("gio", gobject.addBindingModule(b, exe, "gio-2.0"));
-    exe.addModule("gdk", gobject.addBindingModule(b, exe, "gdk-4.0"));
-    exe.addModule("gtk", gobject.addBindingModule(b, exe, "gtk-4.0"));
-    exe.addModule("cairo", gobject.addBindingModule(b, exe, "cairo-1.0"));
-    exe.addModule("pango", gobject.addBindingModule(b, exe, "pango-1.0"));
-    exe.addModule("pangocairo", gobject.addBindingModule(b, exe, "pangocairo-1.0"));
-    exe.addModule("adw", gobject.addBindingModule(b, exe, "adw-1"));
-    exe.addModule("libintl", gobject.addBindingModule(b, exe, "libintl-0.0"));
-    exe.addAnonymousModule("puzzles", .{ .source_file = .{ .path = "puzzles/puzzles.zig" } });
+    exe.root_module.addImport("xml", xml);
+    exe.root_module.addImport("glib", gobject.module("glib-2.0"));
+    exe.root_module.addImport("gobject", gobject.module("gobject-2.0"));
+    exe.root_module.addImport("gio", gobject.module("gio-2.0"));
+    exe.root_module.addImport("gdk", gobject.module("gdk-4.0"));
+    exe.root_module.addImport("gtk", gobject.module("gtk-4.0"));
+    exe.root_module.addImport("cairo", gobject.module("cairo-1.0"));
+    exe.root_module.addImport("pango", gobject.module("pango-1.0"));
+    exe.root_module.addImport("pangocairo", gobject.module("pangocairo-1.0"));
+    exe.root_module.addImport("adw", gobject.module("adw-1"));
+    exe.root_module.addImport("libintl", gobject.module("libintl-0.0"));
+    exe.root_module.addAnonymousImport("puzzles", .{ .root_source_file = .{ .path = "puzzles/puzzles.zig" } });
+    exe.linkSystemLibrary("gio-2.0"); // Needed by gresources_c
     exe.addCSourceFile(.{ .file = gresources_c, .flags = &.{} });
     b.installArtifact(exe);
 
