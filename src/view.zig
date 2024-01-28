@@ -29,8 +29,8 @@ const Color = struct {
     const black = Color{ .r = 0, .g = 0, .b = 0 };
     const red = Color{ .r = 1, .g = 0, .b = 0 };
 
-    fn eql(self: Color, other: Color) bool {
-        return self.r == other.r and self.g == other.g and self.b == other.b;
+    fn eql(color: Color, other: Color) bool {
+        return color.r == other.r and color.g == other.g and color.b == other.b;
     }
 
     fn fromPbn(color: pbn.Color) !Color {
@@ -38,12 +38,12 @@ const Color = struct {
         return .{ .r = rgb.r, .g = rgb.g, .b = rgb.b };
     }
 
-    fn toHex(self: Color) [6]u8 {
+    fn toHex(color: Color) [6]u8 {
         var buf: [6]u8 = undefined;
         _ = fmt.bufPrint(&buf, "{X:0>2}{X:0>2}{X:0>2}", .{
-            @as(u8, @intFromFloat(@round(self.r * 255))),
-            @as(u8, @intFromFloat(@round(self.g * 255))),
-            @as(u8, @intFromFloat(@round(self.b * 255))),
+            @as(u8, @intFromFloat(@round(color.r * 255))),
+            @as(u8, @intFromFloat(@round(color.g * 255))),
+            @as(u8, @intFromFloat(@round(color.b * 255))),
         }) catch unreachable;
         return buf;
     }
@@ -67,35 +67,35 @@ const State = struct {
     hover_tile: ?Cell,
     solved: bool,
 
-    fn isSolved(self: State) bool {
-        for (0..self.row_hints.len) |i| {
-            if (!self.isLineSolved(.row, i)) {
+    fn isSolved(state: State) bool {
+        for (0..state.row_hints.len) |i| {
+            if (!state.isLineSolved(.row, i)) {
                 return false;
             }
         }
-        for (0..self.column_hints.len) |j| {
-            if (!self.isLineSolved(.column, j)) {
+        for (0..state.column_hints.len) |j| {
+            if (!state.isLineSolved(.column, j)) {
                 return false;
             }
         }
         return true;
     }
 
-    fn isLineSolved(self: State, comptime dir: enum { row, column }, n: usize) bool {
-        const hints = if (dir == .row) self.row_hints[n] else self.column_hints[n];
-        const cross_len = if (dir == .row) self.column_hints.len else self.row_hints.len;
-        const cols = self.column_hints.len;
-        var run_color: Color = self.background_color;
+    fn isLineSolved(state: State, comptime dir: enum { row, column }, n: usize) bool {
+        const hints = if (dir == .row) state.row_hints[n] else state.column_hints[n];
+        const cross_len = if (dir == .row) state.column_hints.len else state.row_hints.len;
+        const cols = state.column_hints.len;
+        var run_color: Color = state.background_color;
         var run_len: usize = 0;
         var hint_idx: usize = 0;
         for (0..cross_len) |m| {
             const tile_pos = if (dir == .row) n * cols + m else m * cols + n;
-            const color = self.tile_colors[tile_pos] orelse self.background_color;
+            const color = state.tile_colors[tile_pos] orelse state.background_color;
             if (color.eql(run_color)) {
                 run_len += 1;
                 continue;
             }
-            if (!run_color.eql(self.background_color)) {
+            if (!run_color.eql(state.background_color)) {
                 if (hint_idx >= hints.len or !hints[hint_idx].color.eql(run_color) or hints[hint_idx].n != run_len) {
                     return false;
                 }
@@ -104,7 +104,7 @@ const State = struct {
             run_color = color;
             run_len = 1;
         }
-        if (run_len > 0 and !run_color.eql(self.background_color)) {
+        if (run_len > 0 and !run_color.eql(state.background_color)) {
             if (hint_idx >= hints.len or !hints[hint_idx].color.eql(run_color) or hints[hint_idx].n != run_len) {
                 return false;
             }
@@ -113,9 +113,9 @@ const State = struct {
         return hint_idx == hints.len;
     }
 
-    fn moveHoverTile(self: *State, drow: isize, dcolumn: isize) void {
-        var hover_tile = self.hover_tile orelse {
-            self.hover_tile = .{ .row = self.max_column_hints, .column = self.max_row_hints };
+    fn moveHoverTile(state: *State, drow: isize, dcolumn: isize) void {
+        var hover_tile = state.hover_tile orelse {
+            state.hover_tile = .{ .row = state.max_column_hints, .column = state.max_row_hints };
             return;
         };
         if (drow < 0) {
@@ -128,23 +128,23 @@ const State = struct {
         } else {
             hover_tile.column +|= @intCast(dcolumn);
         }
-        self.hover_tile = .{
-            .row = math.clamp(hover_tile.row, self.max_column_hints, self.max_column_hints + self.row_hints.len - 1),
-            .column = math.clamp(hover_tile.column, self.max_row_hints, self.max_row_hints + self.column_hints.len - 1),
+        state.hover_tile = .{
+            .row = math.clamp(hover_tile.row, state.max_column_hints, state.max_column_hints + state.row_hints.len - 1),
+            .column = math.clamp(hover_tile.column, state.max_row_hints, state.max_row_hints + state.column_hints.len - 1),
         };
     }
 
-    fn tileIndex(self: State, row: usize, column: usize) ?usize {
-        const row_in_bounds = row >= self.max_column_hints and row < self.max_column_hints + self.row_hints.len;
-        const column_in_bounds = column >= self.max_row_hints and column < self.max_row_hints + self.column_hints.len;
+    fn tileIndex(state: State, row: usize, column: usize) ?usize {
+        const row_in_bounds = row >= state.max_column_hints and row < state.max_column_hints + state.row_hints.len;
+        const column_in_bounds = column >= state.max_row_hints and column < state.max_row_hints + state.column_hints.len;
         if (row_in_bounds and column_in_bounds) {
-            return (column - self.max_row_hints) + (row - self.max_column_hints) * self.column_hints.len;
+            return (column - state.max_row_hints) + (row - state.max_column_hints) * state.column_hints.len;
         } else {
             return null;
         }
     }
 
-    fn toImage(self: State, allocator: Allocator, colors: []const pbn.Color) !pbn.Image {
+    fn toImage(state: State, allocator: Allocator, colors: []const pbn.Color) !pbn.Image {
         var color_chars = StringHashMapUnmanaged(u8){};
         defer {
             var key_iterator = color_chars.keyIterator();
@@ -162,8 +162,8 @@ const State = struct {
             }
         }
 
-        var chars = try ArrayListUnmanaged([]const u8).initCapacity(allocator, self.tile_colors.len);
-        var row_iter = mem.window(?Color, self.tile_colors, self.column_hints.len, self.column_hints.len);
+        var chars = try ArrayListUnmanaged([]const u8).initCapacity(allocator, state.tile_colors.len);
+        var row_iter = mem.window(?Color, state.tile_colors, state.column_hints.len, state.column_hints.len);
         while (row_iter.next()) |row| {
             for (row) |maybe_color| {
                 if (maybe_color) |color| {
@@ -175,8 +175,8 @@ const State = struct {
             }
         }
         return .{
-            .rows = self.row_hints.len,
-            .columns = self.column_hints.len,
+            .rows = state.row_hints.len,
+            .columns = state.column_hints.len,
             .chars = try chars.toOwnedSlice(allocator),
         };
     }
@@ -198,23 +198,23 @@ const Dimensions = struct {
 
     const gap_frac = 0.1;
 
-    fn positionTile(self: Dimensions, x: f64, y: f64) ?Cell {
-        const rel_x = x - self.board_pos.x;
-        const rel_y = y - self.board_pos.y;
+    fn positionTile(dim: Dimensions, x: f64, y: f64) ?Cell {
+        const rel_x = x - dim.board_pos.x;
+        const rel_y = y - dim.board_pos.y;
         if (rel_x < 0 or rel_y < 0) {
             return null;
         } else {
             return .{
-                .row = @intFromFloat(rel_y / (self.tile_size + gap_frac * self.tile_size)),
-                .column = @intFromFloat(rel_x / (self.tile_size + gap_frac * self.tile_size)),
+                .row = @intFromFloat(rel_y / (dim.tile_size + gap_frac * dim.tile_size)),
+                .column = @intFromFloat(rel_x / (dim.tile_size + gap_frac * dim.tile_size)),
             };
         }
     }
 
-    fn tilePosition(self: Dimensions, row: usize, column: usize) Point {
+    fn tilePosition(dim: Dimensions, row: usize, column: usize) Point {
         return .{
-            .x = self.board_pos.x + @as(f64, @floatFromInt(column)) * (self.tile_size + gap_frac * self.tile_size),
-            .y = self.board_pos.y + @as(f64, @floatFromInt(row)) * (self.tile_size + gap_frac * self.tile_size),
+            .x = dim.board_pos.x + @as(f64, @floatFromInt(column)) * (dim.tile_size + gap_frac * dim.tile_size),
+            .y = dim.board_pos.y + @as(f64, @floatFromInt(row)) * (dim.tile_size + gap_frac * dim.tile_size),
         };
     }
 };
@@ -228,7 +228,6 @@ pub const View = extern struct {
     parent_instance: Parent,
 
     pub const Parent = gtk.Widget;
-    const Self = @This();
 
     const Private = struct {
         drawing_area: *gtk.DrawingArea,
@@ -248,7 +247,7 @@ pub const View = extern struct {
         .{ .inc = 10, .weight = 1 },
     };
 
-    pub const getType = gobject.defineType(Self, .{
+    pub const getGObjectType = gobject.ext.defineType(View, .{
         .name = "NonogramsView",
         .instanceInit = &init,
         .classInit = &Class.init,
@@ -256,61 +255,65 @@ pub const View = extern struct {
         .private = .{ .Type = Private, .offset = &Private.offset },
     });
 
-    const solved = gobject.defineSignal("solved", *Self, &.{}, void);
+    const solved = gobject.ext.defineSignal("solved", View, &.{}, void);
     pub const connectSolved = solved.connect;
 
-    pub fn new() *Self {
-        return Self.newWith(.{});
+    pub fn new() *View {
+        return View.newWith(.{});
     }
 
-    fn init(self: *Self, _: *Class) callconv(.C) void {
-        self.initTemplate();
-        self.setLayoutManager(gtk.BinLayout.new().as(gtk.LayoutManager));
+    pub fn as(view: *View, comptime T: type) *T {
+        return gobject.ext.as(T, view);
+    }
 
-        const drawing_area = self.private().drawing_area;
-        _ = drawing_area.connectResize(*Self, &handleResize, self, .{});
-        drawing_area.setDrawFunc(&draw, self, null);
+    fn init(view: *View, _: *Class) callconv(.C) void {
+        gtk.Widget.initTemplate(view.as(gtk.Widget));
+        gtk.Widget.setLayoutManager(view.as(gtk.Widget), gtk.BinLayout.new().as(gtk.LayoutManager));
+
+        const drawing_area = view.private().drawing_area;
+        _ = gtk.DrawingArea.connectResize(drawing_area, *View, &handleResize, view, .{});
+        gtk.DrawingArea.setDrawFunc(drawing_area, &draw, view, null);
 
         const drag = gtk.GestureDrag.new();
-        drag.setButton(gdk.BUTTON_PRIMARY);
-        _ = drag.connectDragBegin(*Self, &handleDragBegin, self, .{});
-        _ = drag.connectDragUpdate(*Self, &handleDragUpdate, self, .{});
-        drawing_area.addController(drag.as(gtk.EventController));
+        gtk.GestureSingle.setButton(drag.as(gtk.GestureSingle), gdk.BUTTON_PRIMARY);
+        _ = gtk.GestureDrag.connectDragBegin(drag, *View, &handleDragBegin, view, .{});
+        _ = gtk.GestureDrag.connectDragUpdate(drag, *View, &handleDragUpdate, view, .{});
+        gtk.Widget.addController(drawing_area.as(gtk.Widget), drag.as(gtk.EventController));
 
         const drag_secondary = gtk.GestureDrag.new();
-        drag_secondary.setButton(gdk.BUTTON_SECONDARY);
-        _ = drag_secondary.connectDragBegin(*Self, &handleDragBeginSecondary, self, .{});
-        _ = drag_secondary.connectDragUpdate(*Self, &handleDragUpdateSecondary, self, .{});
-        drawing_area.addController(drag_secondary.as(gtk.EventController));
+        gtk.GestureSingle.setButton(drag_secondary.as(gtk.GestureSingle), gdk.BUTTON_SECONDARY);
+        _ = gtk.GestureDrag.connectDragBegin(drag_secondary, *View, &handleDragBeginSecondary, view, .{});
+        _ = gtk.GestureDrag.connectDragUpdate(drag_secondary, *View, &handleDragUpdateSecondary, view, .{});
+        gtk.Widget.addController(drawing_area.as(gtk.Widget), drag_secondary.as(gtk.EventController));
 
         const motion = gtk.EventControllerMotion.new();
-        _ = motion.connectMotion(*Self, &handlePointerMotion, self, .{});
-        _ = motion.connectLeave(*Self, &handlePointerLeave, self, .{});
-        drawing_area.addController(motion.as(gtk.EventController));
+        _ = gtk.EventControllerMotion.connectMotion(motion, *View, &handlePointerMotion, view, .{});
+        _ = gtk.EventControllerMotion.connectLeave(motion, *View, &handlePointerLeave, view, .{});
+        gtk.Widget.addController(drawing_area.as(gtk.Widget), motion.as(gtk.EventController));
 
         const key = gtk.EventControllerKey.new();
-        _ = key.connectKeyPressed(*Self, &handleKeyPressed, self, .{});
-        _ = key.connectKeyReleased(*Self, &handleKeyReleased, self, .{});
-        self.addController(key.as(gtk.EventController));
+        _ = gtk.EventControllerKey.connectKeyPressed(key, *View, &handleKeyPressed, view, .{});
+        _ = gtk.EventControllerKey.connectKeyReleased(key, *View, &handleKeyReleased, view, .{});
+        gtk.Widget.addController(view.as(gtk.Widget), key.as(gtk.EventController));
 
-        self.private().arena = ArenaAllocator.init(raw_c_allocator);
+        view.private().arena = ArenaAllocator.init(raw_c_allocator);
 
-        _ = self.private().color_picker.connectColorSelected(*Self, &handleColorSelected, self, .{});
+        _ = ColorPicker.connectColorSelected(view.private().color_picker, *View, &handleColorSelected, view, .{});
     }
 
-    fn dispose(self: *Self) callconv(.C) void {
-        while (self.getFirstChild()) |child| child.unparent();
-        Class.parent.callDispose(self.as(gobject.Object));
+    fn dispose(view: *View) callconv(.C) void {
+        while (gtk.Widget.getFirstChild(view.as(gtk.Widget))) |child| child.unparent();
+        Class.parent.as(gobject.Object.Class).dispose.?(view.as(gobject.Object));
     }
 
-    fn finalize(self: *Self) callconv(.C) void {
-        self.private().arena.deinit();
-        Class.parent.callFinalize(self.as(gobject.Object));
+    fn finalize(view: *View) callconv(.C) void {
+        view.private().arena.deinit();
+        Class.parent.as(gobject.Object.Class).finalize.?(view.as(gobject.Object));
     }
 
-    pub fn load(self: *Self, puzzle: pbn.Puzzle) void {
-        _ = self.private().arena.reset(.retain_capacity);
-        const allocator = self.private().arena.allocator();
+    pub fn load(view: *View, puzzle: pbn.Puzzle) void {
+        _ = view.private().arena.reset(.retain_capacity);
+        const allocator = view.private().arena.allocator();
 
         const rows = puzzle.row_clues.lines.len;
         const row_hints = allocator.alloc([]Hint, rows) catch oom();
@@ -390,31 +393,31 @@ pub const View = extern struct {
         }
         state.solved = state.isSolved();
 
-        self.private().state = state;
-        self.private().dimensions = null;
-        self.private().drawing_area.queueDraw();
+        view.private().state = state;
+        view.private().dimensions = null;
+        gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
 
-        self.private().color_picker.load(puzzle);
+        view.private().color_picker.load(puzzle);
     }
 
-    pub fn clear(self: *Self) void {
-        const state = &(self.private().state orelse return);
+    pub fn clear(view: *View) void {
+        const state = &(view.private().state orelse return);
         @memset(state.tile_colors, state.background_color);
         state.solved = false;
-        self.private().drawing_area.queueDraw();
+        gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
     }
 
-    pub fn getImage(self: *Self, allocator: Allocator, colors: []const pbn.Color) !?pbn.Image {
-        const state = self.private().state orelse return null;
+    pub fn getImage(view: *View, allocator: Allocator, colors: []const pbn.Color) !?pbn.Image {
+        const state = view.private().state orelse return null;
         return try state.toImage(allocator, colors);
     }
 
     fn draw(_: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, user_data: ?*anyopaque) callconv(.C) void {
-        const self: *Self = @ptrCast(@alignCast(user_data));
-        const state = self.private().state orelse return;
-        const dims = self.private().dimensions orelse blk: {
+        const view: *View = @ptrCast(@alignCast(user_data));
+        const state = view.private().state orelse return;
+        const dims = view.private().dimensions orelse blk: {
             const computed = computeDimensions(state, width, height);
-            self.private().dimensions = computed;
+            view.private().dimensions = computed;
             break :blk computed;
         };
 
@@ -544,119 +547,119 @@ pub const View = extern struct {
         }
     }
 
-    fn handleDragBegin(_: *gtk.GestureDrag, x: f64, y: f64, self: *Self) callconv(.C) void {
-        self.private().draw_start = .{ .x = x, .y = y };
-        self.handleDrag(x, y, true);
+    fn handleDragBegin(_: *gtk.GestureDrag, x: f64, y: f64, view: *View) callconv(.C) void {
+        view.private().draw_start = .{ .x = x, .y = y };
+        view.handleDrag(x, y, true);
         // If the user clicks the drawing area, it is assumed they want to focus
         // it for future interactions
-        _ = self.private().drawing_area.grabFocus();
+        _ = gtk.Widget.grabFocus(view.private().drawing_area.as(gtk.Widget));
     }
 
-    fn handleDragUpdate(_: *gtk.GestureDrag, x: f64, y: f64, self: *Self) callconv(.C) void {
-        const draw_start = self.private().draw_start;
-        self.handleDrag(draw_start.x + x, draw_start.y + y, true);
+    fn handleDragUpdate(_: *gtk.GestureDrag, x: f64, y: f64, view: *View) callconv(.C) void {
+        const draw_start = view.private().draw_start;
+        view.handleDrag(draw_start.x + x, draw_start.y + y, true);
     }
 
-    fn handleDragBeginSecondary(_: *gtk.GestureDrag, x: f64, y: f64, self: *Self) callconv(.C) void {
-        self.private().draw_start = .{ .x = x, .y = y };
-        self.handleDrag(x, y, false);
+    fn handleDragBeginSecondary(_: *gtk.GestureDrag, x: f64, y: f64, view: *View) callconv(.C) void {
+        view.private().draw_start = .{ .x = x, .y = y };
+        view.handleDrag(x, y, false);
     }
 
-    fn handleDragUpdateSecondary(_: *gtk.GestureDrag, x: f64, y: f64, self: *Self) callconv(.C) void {
-        const draw_start = self.private().draw_start;
-        self.handleDrag(draw_start.x + x, draw_start.y + y, false);
+    fn handleDragUpdateSecondary(_: *gtk.GestureDrag, x: f64, y: f64, view: *View) callconv(.C) void {
+        const draw_start = view.private().draw_start;
+        view.handleDrag(draw_start.x + x, draw_start.y + y, false);
     }
 
-    fn handleDrag(self: *Self, x: f64, y: f64, primary: bool) void {
-        const state = self.private().state orelse return;
-        const dims = self.private().dimensions orelse return;
+    fn handleDrag(view: *View, x: f64, y: f64, primary: bool) void {
+        const state = view.private().state orelse return;
+        const dims = view.private().dimensions orelse return;
         const tile = dims.positionTile(x, y) orelse return;
-        self.setColor(tile.row, tile.column, if (primary) state.selected_color else null);
+        view.setColor(tile.row, tile.column, if (primary) state.selected_color else null);
     }
 
-    fn handleResize(_: *gtk.DrawingArea, width: c_int, height: c_int, self: *Self) callconv(.C) void {
-        const state = self.private().state orelse return;
-        self.private().dimensions = computeDimensions(state, width, height);
+    fn handleResize(_: *gtk.DrawingArea, width: c_int, height: c_int, view: *View) callconv(.C) void {
+        const state = view.private().state orelse return;
+        view.private().dimensions = computeDimensions(state, width, height);
     }
 
-    fn handlePointerMotion(_: *gtk.EventControllerMotion, x: f64, y: f64, self: *Self) callconv(.C) void {
-        const state = &(self.private().state orelse return);
-        const dims = self.private().dimensions orelse return;
+    fn handlePointerMotion(_: *gtk.EventControllerMotion, x: f64, y: f64, view: *View) callconv(.C) void {
+        const state = &(view.private().state orelse return);
+        const dims = view.private().dimensions orelse return;
         state.hover_tile = dims.positionTile(x, y);
-        self.handleDrawIfDrawing();
-        self.private().drawing_area.queueDraw();
+        view.handleDrawIfDrawing();
+        gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
     }
 
-    fn handlePointerLeave(_: *gtk.EventControllerMotion, self: *Self) callconv(.C) void {
-        const state = &(self.private().state orelse return);
+    fn handlePointerLeave(_: *gtk.EventControllerMotion, view: *View) callconv(.C) void {
+        const state = &(view.private().state orelse return);
         state.hover_tile = null;
-        self.private().drawing_area.queueDraw();
+        gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
     }
 
-    fn handleKeyPressed(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, self: *Self) callconv(.C) c_int {
-        const state = &(self.private().state orelse return 0);
+    fn handleKeyPressed(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, view: *View) callconv(.C) c_int {
+        const state = &(view.private().state orelse return 0);
         switch (keyval) {
             gdk.KEY_Up => {
                 state.moveHoverTile(-1, 0);
-                self.handleDrawIfDrawing();
-                self.private().drawing_area.queueDraw();
+                view.handleDrawIfDrawing();
+                gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
             },
             gdk.KEY_Down => {
                 state.moveHoverTile(1, 0);
-                self.handleDrawIfDrawing();
-                self.private().drawing_area.queueDraw();
+                view.handleDrawIfDrawing();
+                gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
             },
             gdk.KEY_Left => {
                 state.moveHoverTile(0, -1);
-                self.handleDrawIfDrawing();
-                self.private().drawing_area.queueDraw();
+                view.handleDrawIfDrawing();
+                gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
             },
             gdk.KEY_Right => {
                 state.moveHoverTile(0, 1);
-                self.handleDrawIfDrawing();
-                self.private().drawing_area.queueDraw();
+                view.handleDrawIfDrawing();
+                gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
             },
-            gdk.KEY_1 => self.handleColorKeyPressed(1),
-            gdk.KEY_2 => self.handleColorKeyPressed(2),
-            gdk.KEY_3 => self.handleColorKeyPressed(3),
-            gdk.KEY_4 => self.handleColorKeyPressed(4),
-            gdk.KEY_5 => self.handleColorKeyPressed(5),
-            gdk.KEY_6 => self.handleColorKeyPressed(6),
-            gdk.KEY_7 => self.handleColorKeyPressed(7),
-            gdk.KEY_8 => self.handleColorKeyPressed(8),
-            gdk.KEY_9 => self.handleColorKeyPressed(9),
-            gdk.KEY_0 => self.handleColorKeyPressed(0),
-            gdk.KEY_space => self.handleKeyboardDrawStart(),
+            gdk.KEY_1 => view.handleColorKeyPressed(1),
+            gdk.KEY_2 => view.handleColorKeyPressed(2),
+            gdk.KEY_3 => view.handleColorKeyPressed(3),
+            gdk.KEY_4 => view.handleColorKeyPressed(4),
+            gdk.KEY_5 => view.handleColorKeyPressed(5),
+            gdk.KEY_6 => view.handleColorKeyPressed(6),
+            gdk.KEY_7 => view.handleColorKeyPressed(7),
+            gdk.KEY_8 => view.handleColorKeyPressed(8),
+            gdk.KEY_9 => view.handleColorKeyPressed(9),
+            gdk.KEY_0 => view.handleColorKeyPressed(0),
+            gdk.KEY_space => view.handleKeyboardDrawStart(),
             else => return 0,
         }
         return 1;
     }
 
-    fn handleKeyReleased(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, self: *Self) callconv(.C) void {
+    fn handleKeyReleased(_: *gtk.EventControllerKey, keyval: c_uint, _: c_uint, _: gdk.ModifierType, view: *View) callconv(.C) void {
         switch (keyval) {
-            gdk.KEY_space => self.handleKeyboardDrawEnd(),
+            gdk.KEY_space => view.handleKeyboardDrawEnd(),
             else => {},
         }
     }
 
-    fn handleColorKeyPressed(self: *Self, n: usize) void {
-        self.private().color_picker.activateButton(n);
+    fn handleColorKeyPressed(view: *View, n: usize) void {
+        view.private().color_picker.activateButton(n);
     }
 
-    fn handleKeyboardDrawStart(self: *Self) void {
-        self.private().keyboard_drawing = true;
-        self.handleDrawIfDrawing();
+    fn handleKeyboardDrawStart(view: *View) void {
+        view.private().keyboard_drawing = true;
+        view.handleDrawIfDrawing();
     }
 
-    fn handleKeyboardDrawEnd(self: *Self) void {
-        self.private().keyboard_drawing = false;
+    fn handleKeyboardDrawEnd(view: *View) void {
+        view.private().keyboard_drawing = false;
     }
 
-    fn handleDrawIfDrawing(self: *Self) void {
-        if (!self.private().keyboard_drawing) return;
-        const state = &(self.private().state orelse return);
+    fn handleDrawIfDrawing(view: *View) void {
+        if (!view.private().keyboard_drawing) return;
+        const state = &(view.private().state orelse return);
         const hover_tile = state.hover_tile orelse return;
-        self.setColor(hover_tile.row, hover_tile.column, state.selected_color);
+        view.setColor(hover_tile.row, hover_tile.column, state.selected_color);
     }
 
     fn computeDimensions(state: State, width_int: c_int, height_int: c_int) Dimensions {
@@ -677,8 +680,8 @@ pub const View = extern struct {
         return .{ .tile_size = tile_size, .board_pos = board_pos };
     }
 
-    fn handleColorSelected(_: *ColorPicker, maybe_color: *glib.Variant, self: *Self) callconv(.C) void {
-        const state = &(self.private().state orelse return);
+    fn handleColorSelected(_: *ColorPicker, maybe_color: *glib.Variant, view: *View) callconv(.C) void {
+        const state = &(view.private().state orelse return);
         if (maybe_color.getMaybe()) |color| {
             const r = color.getChildValue(0).getDouble();
             const g = color.getChildValue(1).getDouble();
@@ -689,8 +692,8 @@ pub const View = extern struct {
         }
     }
 
-    fn setColor(self: *Self, row: usize, column: usize, color: ?Color) void {
-        const state = &(self.private().state orelse return);
+    fn setColor(view: *View, row: usize, column: usize, color: ?Color) void {
+        const state = &(view.private().state orelse return);
         if (state.solved) {
             return;
         }
@@ -698,39 +701,38 @@ pub const View = extern struct {
         state.tile_colors[index] = color;
         if (state.isSolved()) {
             state.solved = true;
-            solved.emit(self, null, .{}, null);
+            solved.emit(view, null, .{}, null);
         }
-        self.private().drawing_area.queueDraw();
+        gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
     }
 
-    fn private(self: *Self) *Private {
-        return gobject.impl_helpers.getPrivate(self, Private, Private.offset);
+    fn private(view: *View) *Private {
+        return gobject.ext.impl_helpers.getPrivate(view, Private, Private.offset);
     }
-
-    pub usingnamespace Parent.Methods(Self);
 
     pub const Class = extern struct {
         parent_class: Parent.Class,
 
         var parent: *Parent.Class = undefined;
 
-        pub const Instance = Self;
+        pub const Instance = View;
+
+        pub fn as(class: *Class, comptime T: type) *T {
+            return gobject.ext.as(T, class);
+        }
 
         fn init(class: *Class) callconv(.C) void {
-            class.implementDispose(&dispose);
-            class.implementFinalize(&finalize);
-            class.setTemplateFromResource("/dev/ianjohnson/Nonograms/ui/view.ui");
+            gobject.Object.Class.implementDispose(class, &dispose);
+            gobject.Object.Class.implementFinalize(class, &finalize);
+            gtk.Widget.Class.setTemplateFromResource(class.as(gtk.Widget.Class), "/dev/ianjohnson/Nonograms/ui/view.ui");
             class.bindTemplateChildPrivate("drawing_area", .{});
             class.bindTemplateChildPrivate("color_picker", .{});
             solved.register(.{});
         }
 
-        fn bindTemplateChildPrivate(class: *Class, comptime name: [:0]const u8, comptime options: gtk.BindTemplateChildOptions) void {
-            gtk.impl_helpers.bindTemplateChildPrivate(class, name, Private, Private.offset, options);
+        fn bindTemplateChildPrivate(class: *Class, comptime name: [:0]const u8, comptime options: gtk.ext.BindTemplateChildOptions) void {
+            gtk.ext.impl_helpers.bindTemplateChildPrivate(class, name, Private, Private.offset, options);
         }
-
-        pub usingnamespace Parent.Class.Methods(Class);
-        pub usingnamespace Parent.VirtualMethods(Class, Instance);
     };
 };
 
@@ -738,7 +740,6 @@ pub const ColorPicker = extern struct {
     parent_instance: Parent,
 
     pub const Parent = gtk.Widget;
-    const Self = @This();
 
     const Private = struct {
         box: *gtk.Box,
@@ -749,7 +750,7 @@ pub const ColorPicker = extern struct {
         var offset: c_int = 0;
     };
 
-    pub const getType = gobject.defineType(Self, .{
+    pub const getGObjectType = gobject.ext.defineType(ColorPicker, .{
         .name = "NonogramsColorPicker",
         .instanceInit = &init,
         .classInit = &Class.init,
@@ -757,35 +758,39 @@ pub const ColorPicker = extern struct {
         .private = .{ .Type = Private, .offset = &Private.offset },
     });
 
-    const color_selected = gobject.defineSignal("color-selected", *Self, &.{*glib.Variant}, void);
+    const color_selected = gobject.ext.defineSignal("color-selected", ColorPicker, &.{*glib.Variant}, void);
     pub const connectColorSelected = color_selected.connect;
 
-    pub fn new() *Self {
-        return Self.newWith(.{});
+    pub fn new() *ColorPicker {
+        return ColorPicker.newWith(.{});
     }
 
-    fn init(self: *Self, _: *Class) callconv(.C) void {
-        self.initTemplate();
-        self.setLayoutManager(gtk.BinLayout.new().as(gtk.LayoutManager));
-
-        self.private().buttons = &.{};
-        self.private().arena = ArenaAllocator.init(raw_c_allocator);
+    pub fn as(picker: *ColorPicker, comptime T: type) *T {
+        return gobject.ext.as(T, picker);
     }
 
-    fn dispose(self: *Self) callconv(.C) void {
-        while (self.getFirstChild()) |child| child.unparent();
-        Class.parent.callDispose(self.as(gobject.Object));
+    fn init(picker: *ColorPicker, _: *Class) callconv(.C) void {
+        gtk.Widget.initTemplate(picker.as(gtk.Widget));
+        gtk.Widget.setLayoutManager(picker.as(gtk.Widget), gtk.BinLayout.new().as(gtk.LayoutManager));
+
+        picker.private().buttons = &.{};
+        picker.private().arena = ArenaAllocator.init(raw_c_allocator);
     }
 
-    fn finalize(self: *Self) callconv(.C) void {
-        self.private().arena.deinit();
-        Class.parent.callFinalize(self.as(gobject.Object));
+    fn dispose(picker: *ColorPicker) callconv(.C) void {
+        while (gtk.Widget.getFirstChild(picker.as(gtk.Widget))) |child| child.unparent();
+        Class.parent.as(gobject.Object.Class).dispose.?(picker.as(gobject.Object));
     }
 
-    pub fn load(self: *Self, puzzle: pbn.Puzzle) void {
-        while (self.private().box.getFirstChild()) |child| child.unparent();
-        _ = self.private().arena.reset(.retain_capacity);
-        const allocator = self.private().arena.allocator();
+    fn finalize(picker: *ColorPicker) callconv(.C) void {
+        picker.private().arena.deinit();
+        Class.parent.as(gobject.Object.Class).finalize.?(picker.as(gobject.Object));
+    }
+
+    pub fn load(picker: *ColorPicker, puzzle: pbn.Puzzle) void {
+        while (gtk.Widget.getFirstChild(picker.private().box.as(gtk.Widget))) |child| child.unparent();
+        _ = picker.private().arena.reset(.retain_capacity);
+        const allocator = picker.private().arena.allocator();
 
         var buttons = ArrayListUnmanaged(*ColorButton){};
         const none_button = ColorButton.new(
@@ -793,70 +798,69 @@ pub const ColorPicker = extern struct {
             Color.fromPbn(puzzle.colors.get(puzzle.default_color) orelse pbn.Color.black) catch Color.black,
             0,
         );
-        self.private().box.append(none_button.as(gtk.Widget));
-        _ = none_button.connectToggled(*Self, &handleButtonToggled, self, .{});
+        gtk.Box.append(picker.private().box, none_button.as(gtk.Widget));
+        _ = gtk.ToggleButton.connectToggled(none_button, *ColorPicker, &handleButtonToggled, picker, .{});
         buttons.append(allocator, none_button) catch oom();
 
         var last_button: *gtk.ToggleButton = none_button.as(gtk.ToggleButton);
         for (puzzle.colors.values(), 1..) |color, number| {
             const button = ColorButton.new(Color.fromPbn(color) catch Color.black, null, number);
-            button.setGroup(last_button);
-            self.private().box.append(button.as(gtk.Widget));
+            gtk.ToggleButton.setGroup(button.as(gtk.ToggleButton), last_button);
+            picker.private().box.append(button.as(gtk.Widget));
             last_button = button.as(gtk.ToggleButton);
             if (mem.eql(u8, color.name, puzzle.default_color)) {
-                button.setActive(1);
+                gtk.ToggleButton.setActive(button.as(gtk.ToggleButton), 1);
             }
-            _ = button.connectToggled(*Self, &handleButtonToggled, self, .{});
+            _ = gtk.ToggleButton.connectToggled(button, *ColorPicker, &handleButtonToggled, picker, .{});
             buttons.append(allocator, button) catch oom();
         }
 
-        self.private().buttons = buttons.items;
+        picker.private().buttons = buttons.items;
     }
 
-    pub fn activateButton(self: *Self, n: usize) void {
-        const buttons = self.private().buttons;
+    pub fn activateButton(picker: *ColorPicker, n: usize) void {
+        const buttons = picker.private().buttons;
         if (n < buttons.len) {
-            buttons[n].setActive(1);
+            gtk.ToggleButton.setActive(buttons[n].as(gtk.ToggleButton), 1);
         }
     }
 
-    fn handleButtonToggled(button: *ColorButton, self: *Self) callconv(.C) void {
-        if (button.getActive() == 0) {
+    fn handleButtonToggled(button: *ColorButton, picker: *ColorPicker) callconv(.C) void {
+        if (gtk.ToggleButton.getActive(button.as(gtk.ToggleButton)) == 0) {
             return;
         }
 
         const ColorTuple = struct { f64, f64, f64 };
         const color: ?ColorTuple = if (button.getSelectionColor()) |color| .{ color.r, color.g, color.b } else null;
-        color_selected.emit(self, null, .{glib.Variant.newFrom(color)}, null);
+        color_selected.emit(picker, null, .{glib.ext.Variant.newFrom(color)}, null);
     }
 
-    fn private(self: *Self) *Private {
-        return gobject.impl_helpers.getPrivate(self, Private, Private.offset);
+    fn private(picker: *ColorPicker) *Private {
+        return gobject.ext.impl_helpers.getPrivate(picker, Private, Private.offset);
     }
-
-    pub usingnamespace Parent.Methods(Self);
 
     pub const Class = extern struct {
         parent_class: Parent.Class,
 
         var parent: *Parent.Class = undefined;
 
-        pub const Instance = Self;
+        pub const Instance = ColorPicker;
+
+        pub fn as(class: *Class, comptime T: type) *T {
+            return gobject.ext.as(T, class);
+        }
 
         fn init(class: *Class) callconv(.C) void {
-            class.implementDispose(&dispose);
-            class.implementFinalize(&finalize);
-            class.setTemplateFromResource("/dev/ianjohnson/Nonograms/ui/color-picker.ui");
+            gobject.Object.Class.implementDispose(class, &dispose);
+            gobject.Object.Class.implementFinalize(class, &finalize);
+            gtk.Widget.Class.setTemplateFromResource(class.as(gtk.Widget.Class), "/dev/ianjohnson/Nonograms/ui/color-picker.ui");
             class.bindTemplateChildPrivate("box", .{});
             color_selected.register(.{});
         }
 
-        fn bindTemplateChildPrivate(class: *Class, comptime name: [:0]const u8, comptime options: gtk.BindTemplateChildOptions) void {
-            gtk.impl_helpers.bindTemplateChildPrivate(class, name, Private, Private.offset, options);
+        fn bindTemplateChildPrivate(class: *Class, comptime name: [:0]const u8, comptime options: gtk.ext.BindTemplateChildOptions) void {
+            gtk.ext.impl_helpers.bindTemplateChildPrivate(class, name, Private, Private.offset, options);
         }
-
-        pub usingnamespace Parent.Class.Methods(Class);
-        pub usingnamespace Parent.VirtualMethods(Class, Instance);
     };
 };
 
@@ -864,7 +868,6 @@ pub const ColorButton = extern struct {
     parent_instance: Parent,
 
     pub const Parent = gtk.ToggleButton;
-    const Self = @This();
 
     const Private = struct {
         toggle_button: *gtk.ToggleButton,
@@ -878,41 +881,45 @@ pub const ColorButton = extern struct {
 
     const text_padding = 0.2;
 
-    pub const getType = gobject.defineType(Self, .{
+    pub const getGObjectType = gobject.ext.defineType(ColorButton, .{
         .name = "NonogramsColorButton",
         .instanceInit = &init,
         .classInit = &Class.init,
         .private = .{ .Type = Private, .offset = &Private.offset },
     });
 
-    pub fn new(color: Color, x_color: ?Color, key_number: usize) *Self {
-        const self = Self.newWith(.{});
-        self.private().color = color;
-        self.private().x_color = x_color;
-        self.private().key_number = key_number;
-        return self;
+    pub fn new(color: Color, x_color: ?Color, key_number: usize) *ColorButton {
+        const button = gobject.ext.newInstance(ColorButton, .{});
+        button.private().color = color;
+        button.private().x_color = x_color;
+        button.private().key_number = key_number;
+        return button;
     }
 
-    fn init(self: *Self, _: *Class) callconv(.C) void {
-        self.initTemplate();
-        self.private().drawing_area.setDrawFunc(&draw, self, null);
+    pub fn as(button: *ColorButton, comptime T: type) *T {
+        return gobject.ext.as(T, button);
     }
 
-    pub fn getSelectionColor(self: *Self) ?Color {
-        return if (self.private().x_color == null) self.private().color else null;
+    fn init(button: *ColorButton, _: *Class) callconv(.C) void {
+        gtk.Widget.initTemplate(button.as(gtk.Widget));
+        gtk.DrawingArea.setDrawFunc(button.private().drawing_area, &draw, button, null);
+    }
+
+    pub fn getSelectionColor(button: *ColorButton) ?Color {
+        return if (button.private().x_color == null) button.private().color else null;
     }
 
     fn draw(_: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, user_data: ?*anyopaque) callconv(.C) void {
-        const self: *Self = @ptrCast(@alignCast(user_data));
+        const button: *ColorButton = @ptrCast(@alignCast(user_data));
         const w: f64 = @floatFromInt(width);
         const h: f64 = @floatFromInt(height);
 
-        const color = self.private().color;
+        const color = button.private().color;
         cr.setSourceRgb(color.r, color.g, color.b);
         cr.rectangle(0, 0, w, h);
         cr.fill();
 
-        if (self.private().x_color) |x_color| {
+        if (button.private().x_color) |x_color| {
             cr.setSourceRgb(x_color.r, x_color.g, x_color.b);
             cr.setLineWidth(Dimensions.gap_frac * w);
             cr.moveTo(w * 0.25, h * 0.25);
@@ -933,7 +940,7 @@ pub const ColorButton = extern struct {
         layout.setFontDescription(font);
 
         var buf: [32]u8 = undefined;
-        const text = std.fmt.bufPrintZ(&buf, "{}", .{self.private().key_number}) catch unreachable;
+        const text = std.fmt.bufPrintZ(&buf, "{}", .{button.private().key_number}) catch unreachable;
         layout.setText(text, -1);
         var tw: c_int = undefined;
         var th: c_int = undefined;
@@ -957,27 +964,26 @@ pub const ColorButton = extern struct {
         pangocairo.showLayout(cr, layout);
     }
 
-    fn private(self: *Self) *Private {
-        return gobject.impl_helpers.getPrivate(self, Private, Private.offset);
+    fn private(button: *ColorButton) *Private {
+        return gobject.ext.impl_helpers.getPrivate(button, Private, Private.offset);
     }
-
-    pub usingnamespace Parent.Methods(Self);
 
     pub const Class = extern struct {
         parent_class: Parent.Class,
 
-        pub const Instance = Self;
+        pub const Instance = ColorButton;
+
+        pub fn as(class: *Class, comptime T: type) *T {
+            return gobject.ext.as(T, class);
+        }
 
         fn init(class: *Class) callconv(.C) void {
-            class.setTemplateFromResource("/dev/ianjohnson/Nonograms/ui/color-button.ui");
+            gtk.Widget.Class.setTemplateFromResource(class.as(gtk.Widget.Class), "/dev/ianjohnson/Nonograms/ui/color-button.ui");
             class.bindTemplateChildPrivate("drawing_area", .{});
         }
 
-        fn bindTemplateChildPrivate(class: *Class, comptime name: [:0]const u8, comptime options: gtk.BindTemplateChildOptions) void {
-            gtk.impl_helpers.bindTemplateChildPrivate(class, name, Private, Private.offset, options);
+        fn bindTemplateChildPrivate(class: *Class, comptime name: [:0]const u8, comptime options: gtk.ext.BindTemplateChildOptions) void {
+            gtk.ext.impl_helpers.bindTemplateChildPrivate(class, name, Private, Private.offset, options);
         }
-
-        pub usingnamespace Parent.Class.Methods(Class);
-        pub usingnamespace Parent.VirtualMethods(Class, Instance);
     };
 };

@@ -61,18 +61,18 @@ pub const PuzzleSet = struct {
         };
     }
 
-    pub fn writeFile(self: PuzzleSet, path: [:0]const u8) WriteError!void {
+    pub fn writeFile(set: PuzzleSet, path: [:0]const u8) WriteError!void {
         const file = try fs.cwd().createFile(path, .{});
         defer file.close();
         var buffered_writer = io.bufferedWriter(file.writer());
         var writer = xml.writer(buffered_writer.writer());
-        try self.writeDoc(&writer);
+        try set.writeDoc(&writer);
         try buffered_writer.flush();
         try file.sync();
     }
 
-    pub fn deinit(self: *PuzzleSet) void {
-        self.arena.deinit();
+    pub fn deinit(set: *PuzzleSet) void {
+        set.arena.deinit();
     }
 
     fn parseXml(allocator: Allocator, reader: anytype) !PuzzleSet {
@@ -142,31 +142,31 @@ pub const PuzzleSet = struct {
         };
     }
 
-    fn writeDoc(self: PuzzleSet, writer: anytype) !void {
+    fn writeDoc(set: PuzzleSet, writer: anytype) !void {
         try writer.writeXmlDeclaration("1.0", "UTF-8", true);
         try writer.writeElementStart(.{ .local = "puzzleset" });
-        if (self.source) |source| {
+        if (set.source) |source| {
             try writeTextElement(writer, "source", source);
         }
-        if (self.id) |id| {
+        if (set.id) |id| {
             try writeTextElement(writer, "id", id);
         }
-        if (self.title) |title| {
+        if (set.title) |title| {
             try writeTextElement(writer, "title", title);
         }
-        if (self.author) |author| {
+        if (set.author) |author| {
             try writeTextElement(writer, "author", author);
         }
-        if (self.author_id) |author_id| {
+        if (set.author_id) |author_id| {
             try writeTextElement(writer, "authorid", author_id);
         }
-        if (self.copyright) |copyright| {
+        if (set.copyright) |copyright| {
             try writeTextElement(writer, "copyright", copyright);
         }
-        for (self.puzzles) |puzzle| {
+        for (set.puzzles) |puzzle| {
             try puzzle.write(writer);
         }
-        for (self.notes) |note| {
+        for (set.notes) |note| {
             try writeTextElement(writer, "note", note);
         }
         try writer.writeElementEnd(.{ .local = "puzzleset" });
@@ -287,40 +287,40 @@ pub const Puzzle = struct {
         };
     }
 
-    fn write(self: Puzzle, writer: anytype) !void {
+    fn write(puzzle: Puzzle, writer: anytype) !void {
         try writer.writeElementStart(.{ .local = "puzzle" });
-        try writer.writeAttribute(.{ .local = "defaultcolor" }, self.default_color);
-        try writer.writeAttribute(.{ .local = "backgroundcolor" }, self.background_color);
-        if (self.source) |source| {
+        try writer.writeAttribute(.{ .local = "defaultcolor" }, puzzle.default_color);
+        try writer.writeAttribute(.{ .local = "backgroundcolor" }, puzzle.background_color);
+        if (puzzle.source) |source| {
             try writeTextElement(writer, "source", source);
         }
-        if (self.id) |id| {
+        if (puzzle.id) |id| {
             try writeTextElement(writer, "id", id);
         }
-        if (self.title) |title| {
+        if (puzzle.title) |title| {
             try writeTextElement(writer, "title", title);
         }
-        if (self.author) |author| {
+        if (puzzle.author) |author| {
             try writeTextElement(writer, "author", author);
         }
-        if (self.author_id) |author_id| {
+        if (puzzle.author_id) |author_id| {
             try writeTextElement(writer, "authorid", author_id);
         }
-        if (self.copyright) |copyright| {
+        if (puzzle.copyright) |copyright| {
             try writeTextElement(writer, "copyright", copyright);
         }
-        if (self.description) |description| {
+        if (puzzle.description) |description| {
             try writeTextElement(writer, "description", description);
         }
-        for (self.colors.values()) |color| {
+        for (puzzle.colors.values()) |color| {
             try color.write(writer);
         }
-        try self.row_clues.write(writer);
-        try self.column_clues.write(writer);
-        for (self.solutions) |solution| {
+        try puzzle.row_clues.write(writer);
+        try puzzle.column_clues.write(writer);
+        for (puzzle.solutions) |solution| {
             try solution.write(writer);
         }
-        for (self.notes) |note| {
+        for (puzzle.notes) |note| {
             try writeTextElement(writer, "note", note);
         }
         try writer.writeElementEnd(.{ .local = "puzzle" });
@@ -335,26 +335,26 @@ pub const Color = struct {
     pub const black = Color{ .name = "black", .char = 'X', .value = "000" };
     pub const white = Color{ .name = "white", .char = '.', .value = "fff" };
 
-    pub fn toRgb(self: Color) error{InvalidColor}!struct { r: u8, g: u8, b: u8 } {
-        if (self.value.len == 3) {
+    pub fn toRgb(color: Color) error{InvalidColor}!struct { r: u8, g: u8, b: u8 } {
+        if (color.value.len == 3) {
             return .{
-                .r = fmt.parseInt(u8, &.{ self.value[0], self.value[0] }, 16) catch return error.InvalidColor,
-                .g = fmt.parseInt(u8, &.{ self.value[1], self.value[1] }, 16) catch return error.InvalidColor,
-                .b = fmt.parseInt(u8, &.{ self.value[2], self.value[2] }, 16) catch return error.InvalidColor,
+                .r = fmt.parseInt(u8, &.{ color.value[0], color.value[0] }, 16) catch return error.InvalidColor,
+                .g = fmt.parseInt(u8, &.{ color.value[1], color.value[1] }, 16) catch return error.InvalidColor,
+                .b = fmt.parseInt(u8, &.{ color.value[2], color.value[2] }, 16) catch return error.InvalidColor,
             };
-        } else if (self.value.len == 6) {
+        } else if (color.value.len == 6) {
             return .{
-                .r = fmt.parseInt(u8, self.value[0..2], 16) catch return error.InvalidColor,
-                .g = fmt.parseInt(u8, self.value[2..4], 16) catch return error.InvalidColor,
-                .b = fmt.parseInt(u8, self.value[4..6], 16) catch return error.InvalidColor,
+                .r = fmt.parseInt(u8, color.value[0..2], 16) catch return error.InvalidColor,
+                .g = fmt.parseInt(u8, color.value[2..4], 16) catch return error.InvalidColor,
+                .b = fmt.parseInt(u8, color.value[4..6], 16) catch return error.InvalidColor,
             };
         } else {
             return error.InvalidColor;
         }
     }
 
-    pub fn toFloatRgb(self: Color) error{InvalidColor}!struct { r: f64, g: f64, b: f64 } {
-        const rgb = try self.toRgb();
+    pub fn toFloatRgb(color: Color) error{InvalidColor}!struct { r: f64, g: f64, b: f64 } {
+        const rgb = try color.toRgb();
         return .{
             .r = @as(f64, @floatFromInt(rgb.r)) / 255,
             .g = @as(f64, @floatFromInt(rgb.g)) / 255,
@@ -386,13 +386,13 @@ pub const Color = struct {
         };
     }
 
-    fn write(self: Color, writer: anytype) !void {
+    fn write(color: Color, writer: anytype) !void {
         try writer.writeElementStart(.{ .local = "color" });
-        try writer.writeAttribute(.{ .local = "name" }, self.name);
-        if (self.char) |char| {
+        try writer.writeAttribute(.{ .local = "name" }, color.name);
+        if (color.char) |char| {
             try writer.writeAttribute(.{ .local = "char" }, &[_]u8{char});
         }
-        try writer.writeElementContent(self.value);
+        try writer.writeElementContent(color.value);
         try writer.writeElementEnd(.{ .local = "color" });
     }
 };
@@ -430,10 +430,10 @@ pub const Clues = struct {
         };
     }
 
-    fn write(self: Clues, writer: anytype) !void {
+    fn write(clues: Clues, writer: anytype) !void {
         try writer.writeElementStart(.{ .local = "clues" });
-        try writer.writeAttribute(.{ .local = "type" }, @tagName(self.type));
-        for (self.lines) |line| {
+        try writer.writeAttribute(.{ .local = "type" }, @tagName(clues.type));
+        for (clues.lines) |line| {
             try line.write(writer);
         }
         try writer.writeElementEnd(.{ .local = "clues" });
@@ -462,9 +462,9 @@ pub const Line = struct {
         };
     }
 
-    fn write(self: Line, writer: anytype) !void {
+    fn write(line: Line, writer: anytype) !void {
         try writer.writeElementStart(.{ .local = "line" });
-        for (self.counts) |count| {
+        for (line.counts) |count| {
             try count.write(writer);
         }
         try writer.writeElementEnd(.{ .local = "line" });
@@ -496,13 +496,13 @@ pub const Count = struct {
         };
     }
 
-    fn write(self: Count, writer: anytype) !void {
+    fn write(count: Count, writer: anytype) !void {
         try writer.writeElementStart(.{ .local = "count" });
-        if (self.color) |color| {
+        if (count.color) |color| {
             try writer.writeAttribute(.{ .local = "color" }, color);
         }
         var buf: [32]u8 = undefined;
-        try writer.writeElementContent(fmt.bufPrint(&buf, "{}", .{self.n}) catch unreachable);
+        try writer.writeElementContent(fmt.bufPrint(&buf, "{}", .{count.n}) catch unreachable);
         try writer.writeElementEnd(.{ .local = "count" });
     }
 };
@@ -545,11 +545,11 @@ pub const Solution = struct {
         };
     }
 
-    fn write(self: Solution, writer: anytype) !void {
+    fn write(solution: Solution, writer: anytype) !void {
         try writer.writeElementStart(.{ .local = "solution" });
-        try writer.writeAttribute(.{ .local = "type" }, @tagName(self.type));
-        try self.image.write(writer);
-        for (self.notes) |note| {
+        try writer.writeAttribute(.{ .local = "type" }, @tagName(solution.type));
+        try solution.image.write(writer);
+        for (solution.notes) |note| {
             try writeTextElement(writer, "note", note);
         }
         try writer.writeElementEnd(.{ .local = "solution" });
@@ -561,11 +561,11 @@ pub const Image = struct {
     columns: usize,
     chars: []const []const u8,
 
-    pub fn deinit(self: Image, allocator: Allocator) void {
-        for (self.chars) |options| {
+    pub fn deinit(image: Image, allocator: Allocator) void {
+        for (image.chars) |options| {
             allocator.free(options);
         }
-        allocator.free(self.chars);
+        allocator.free(image.chars);
     }
 
     pub fn fromText(allocator: Allocator, text: []const u8) Error!Image {
@@ -618,7 +618,7 @@ pub const Image = struct {
         };
     }
 
-    pub fn toClues(self: Image, allocator: Allocator, colors: []const Color, background_color: []const u8) Error!struct { rows: Clues, columns: Clues } {
+    pub fn toClues(image: Image, allocator: Allocator, colors: []const Color, background_color: []const u8) Error!struct { rows: Clues, columns: Clues } {
         var color_names = AutoHashMapUnmanaged(u8, [:0]const u8){};
         defer color_names.deinit(allocator);
         try color_names.ensureTotalCapacity(allocator, @intCast(colors.len));
@@ -632,13 +632,13 @@ pub const Image = struct {
             }
         }
 
-        var row_lines = try ArrayListUnmanaged(Line).initCapacity(allocator, self.rows);
-        for (0..self.rows) |i| {
+        var row_lines = try ArrayListUnmanaged(Line).initCapacity(allocator, image.rows);
+        for (0..image.rows) |i| {
             var counts = ArrayListUnmanaged(Count){};
             var run_color: ?u8 = null;
             var run_len: usize = 0;
-            for (0..self.columns) |j| {
-                const options = self.chars[self.columns * i + j];
+            for (0..image.columns) |j| {
+                const options = image.chars[image.columns * i + j];
                 if (options.len != 1) {
                     return error.InvalidPbn;
                 }
@@ -664,13 +664,13 @@ pub const Image = struct {
             row_lines.appendAssumeCapacity(.{ .counts = try counts.toOwnedSlice(allocator) });
         }
 
-        var column_lines = try ArrayListUnmanaged(Line).initCapacity(allocator, self.columns);
-        for (0..self.columns) |j| {
+        var column_lines = try ArrayListUnmanaged(Line).initCapacity(allocator, image.columns);
+        for (0..image.columns) |j| {
             var counts = ArrayListUnmanaged(Count){};
             var run_color: ?u8 = null;
             var run_len: usize = 0;
-            for (0..self.rows) |i| {
-                const options = self.chars[self.columns * i + j];
+            for (0..image.rows) |i| {
+                const options = image.chars[image.columns * i + j];
                 if (options.len != 1) {
                     return error.InvalidPbn;
                 }
@@ -708,9 +708,9 @@ pub const Image = struct {
         return try fromText(allocator, text);
     }
 
-    fn write(self: Image, writer: anytype) !void {
+    fn write(image: Image, writer: anytype) !void {
         try writer.writeElementStart(.{ .local = "image" });
-        var row_iter = mem.window([]const u8, self.chars, self.columns, self.columns);
+        var row_iter = mem.window([]const u8, image.chars, image.columns, image.columns);
         while (row_iter.next()) |row| {
             try writer.writeElementContent("|");
             for (row) |options| {
