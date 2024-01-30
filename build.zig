@@ -1,4 +1,5 @@
 const std = @import("std");
+const gobject_build = @import("gobject");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -6,11 +7,6 @@ pub fn build(b: *std.Build) !void {
 
     const gobject = b.dependency("gobject", .{});
     const xml = b.dependency("xml", .{}).module("xml");
-
-    const compile_resources = b.addSystemCommand(&.{ "glib-compile-resources", "--generate-source", "--target" });
-    const gresources_c = compile_resources.addOutputFileArg("gresources.c");
-    compile_resources.addArg("gresources.xml");
-    compile_resources.cwd = .{ .path = "data" };
 
     const exe = b.addExecutable(.{
         .name = "nonograms",
@@ -31,8 +27,8 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("adw", gobject.module("adw-1"));
     exe.root_module.addImport("libintl", gobject.module("libintl-0.0"));
     exe.root_module.addAnonymousImport("puzzles", .{ .root_source_file = .{ .path = "puzzles/puzzles.zig" } });
-    exe.linkSystemLibrary("gio-2.0"); // Needed by gresources_c
-    exe.addCSourceFile(.{ .file = gresources_c, .flags = &.{} });
+    const gresources = gobject_build.addCompileResources(b, target, .{ .path = "data/gresources.xml" });
+    exe.root_module.addImport("gresources", gresources);
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);

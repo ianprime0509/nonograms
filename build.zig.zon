@@ -18,8 +18,8 @@
             .hash = "1220d70515390ed942a0864fe3aad2f3b485b3fcb9df07d61dbefea9873373647e33",
         },
         .gobject = .{
-            .url = "git+https://github.com/ianprime0509/zig-gobject#d760a69e302319c16e77e7c829c6d296ac224f00",
-            .hash = "1220d7a41877fc26fde4dbaf9a8419d36f78137aa87a7dd7f1dbb3a27fe5b071bb2e",
+            .url = "git+https://github.com/ianprime0509/zig-gobject#2cc0c91b000105df9c0f69232253c536480f0255",
+            .hash = "1220f9ebbfddfc10aaed91a01ac655608c3bb2e8b66557934b459df1e80adcf7e241",
         },
     },
 }

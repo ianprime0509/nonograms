@@ -22,8 +22,8 @@ pub const Entry = struct {
     title: ?[:0]const u8,
 };
 
-pub fn deinit(self: *Library) void {
-    self.arena.deinit();
+pub fn deinit(library: *Library) void {
+    library.arena.deinit();
 }
 
 pub fn load() !Library {
