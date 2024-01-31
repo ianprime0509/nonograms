@@ -18,8 +18,8 @@
             .hash = "1220d70515390ed942a0864fe3aad2f3b485b3fcb9df07d61dbefea9873373647e33",
         },
         .gobject = .{
-            .url = "git+https://github.com/ianprime0509/zig-gobject#ac6272f14652cf51b008f9eb169175a6fae4be6a",
-            .hash = "1220810d46451c89bb2bba3b5ff92f692eb69f22aecbc35eec9a5106179eb1828702",
+            .url = "https://github.com/ianprime0509/zig-gobject/releases/download/v0.1.0/bindings-gnome44.8.tar.zst",
+            .hash = "12201576e483b2ccbb9218afd0792aa137f6ea9612b1d84a423e05cc6271bc70c447",
         },
     },
 }
