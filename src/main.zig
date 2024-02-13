@@ -209,9 +209,8 @@ const ApplicationWindow = extern struct {
         }
         const uri = mem.sliceTo(file.getUri(), 0);
         win.private().puzzle_set_uri = uri;
-        var size: usize = undefined;
-        const bytes = contents.getData(&size);
-        const puzzle_set = pbn.PuzzleSet.parseBytes(c_allocator, bytes[0..size]) catch {
+        const bytes = glib.ext.Bytes.getDataSlice(contents);
+        const puzzle_set = pbn.PuzzleSet.parseBytes(c_allocator, bytes) catch {
             adw.ToastOverlay.addToast(win.private().toast_overlay, adw.Toast.new(intl.gettext("Failed to load puzzle")));
             return;
         };
