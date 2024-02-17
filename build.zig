@@ -25,7 +25,7 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("pango", gobject.module("pango-1.0"));
     exe.root_module.addImport("pangocairo", gobject.module("pangocairo-1.0"));
     exe.root_module.addImport("adw", gobject.module("adw-1"));
-    exe.root_module.addImport("libintl", gobject.module("libintl-0.0"));
+    exe.root_module.addImport("libintl", b.dependency("libintl", .{}).module("libintl"));
     exe.root_module.addAnonymousImport("puzzles", .{ .root_source_file = .{ .path = "puzzles/puzzles.zig" } });
     const gresources = gobject_build.addCompileResources(b, target, .{ .path = "data/gresources.xml" });
     exe.root_module.addImport("gresources", gresources);

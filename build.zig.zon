@@ -21,5 +21,9 @@
             .url = "https://github.com/ianprime0509/zig-gobject/releases/download/v0.1.1/bindings-gnome45.3.tar.zst",
             .hash = "12203095b95283c931022f90ba25bf5bd62cff33a97a81a44b1709f6f5909cae5950",
         },
+        .libintl = .{
+            .url = "git+https://github.com/ianprime0509/zig-libintl#86765111b6d6233713b4dc4c7fd91aad1e87dbdb",
+            .hash = "12202370a001c035bf28c62557fdefed81719bdd89a0c7dd7e428b90eeaaff524a61",
+        },
     },
 }

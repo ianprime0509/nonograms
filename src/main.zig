@@ -27,9 +27,9 @@ pub fn main() !void {
     defer c_allocator.free(cwd);
     const locale_path = try fs.path.joinZ(c_allocator, &.{ cwd, "locale" });
     defer c_allocator.free(locale_path);
-    _ = intl.bindtextdomain(package, locale_path);
-    _ = intl.bindTextdomainCodeset(package, "UTF-8");
-    _ = intl.textdomain(package);
+    intl.bindTextDomain(package, locale_path);
+    intl.bindTextDomainCodeset(package, "UTF-8");
+    intl.setTextDomain(package);
 
     // Ensure types are defined
     _ = Application.getGObjectType();
