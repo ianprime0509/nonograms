@@ -313,13 +313,7 @@ const ApplicationWindow = extern struct {
     }
 
     fn handleAboutAction(_: *gio.SimpleAction, _: ?*glib.Variant, win: *ApplicationWindow) callconv(.C) void {
-        const about = adw.AboutWindow.new();
-        adw.AboutWindow.setApplicationName(about, intl.gettext("Nonograms"));
-        adw.AboutWindow.setDeveloperName(about, "Ian Johnson");
-        adw.AboutWindow.setCopyright(about, "© 2023 Ian Johnson");
-        adw.AboutWindow.setWebsite(about, "https://github.com/ianprime0509/nonograms");
-        adw.AboutWindow.setIssueUrl(about, "https://github.com/ianprime0509/nonograms/issues");
-        adw.AboutWindow.setLicenseType(about, gtk.License.mit_x11);
+        const about = adw.AboutWindow.newFromAppdata("/dev/ianjohnson/Nonograms/metainfo.xml", null);
         gtk.Window.setTransientFor(about.as(gtk.Window), win.as(gtk.Window));
         gtk.Window.present(about.as(gtk.Window));
     }
