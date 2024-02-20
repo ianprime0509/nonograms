@@ -236,6 +236,7 @@ pub const View = extern struct {
         keyboard_drawing: bool,
         dimensions: ?Dimensions,
         state: ?State,
+        cleared_tile_colors: []?Color,
         arena: ArenaAllocator,
 
         var offset: c_int = 0;
@@ -394,6 +395,8 @@ pub const View = extern struct {
         state.solved = state.isSolved();
 
         view.private().state = state;
+        view.private().cleared_tile_colors = allocator.alloc(?Color, tile_colors.len) catch oom();
+        @memset(view.private().cleared_tile_colors, null);
         view.private().dimensions = null;
         gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
 
@@ -402,8 +405,18 @@ pub const View = extern struct {
 
     pub fn clear(view: *View) void {
         const state = &(view.private().state orelse return);
+        @memcpy(view.private().cleared_tile_colors, state.tile_colors);
         @memset(state.tile_colors, state.background_color);
         state.solved = false;
+        gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
+    }
+
+    pub fn undoClear(view: *View) void {
+        const state = &(view.private().state orelse return);
+        @memcpy(state.tile_colors, view.private().cleared_tile_colors);
+        state.solved = state.isSolved();
+        // No solved signal is emitted here to prevent repeated completion
+        // popups.
         gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
     }
 

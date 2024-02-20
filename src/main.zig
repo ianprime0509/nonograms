@@ -310,6 +310,15 @@ const ApplicationWindow = extern struct {
 
     fn handleClearAction(_: *gio.SimpleAction, _: ?*glib.Variant, win: *ApplicationWindow) callconv(.C) void {
         win.private().view.clear();
+        const toast = adw.Toast.new("Puzzle cleared");
+        adw.Toast.setButtonLabel(toast, "Undo");
+        _ = adw.Toast.connectButtonClicked(toast, *ApplicationWindow, &handleUndoClear, win, .{});
+        adw.ToastOverlay.addToast(win.private().toast_overlay, toast);
+    }
+
+    fn handleUndoClear(toast: *adw.Toast, win: *ApplicationWindow) callconv(.C) void {
+        adw.Toast.dismiss(toast);
+        win.private().view.undoClear();
     }
 
     fn handleAboutAction(_: *gio.SimpleAction, _: ?*glib.Variant, win: *ApplicationWindow) callconv(.C) void {
