@@ -1,3 +1,0 @@
-[submodule "lib/zig-gobject"]
-	path = lib/zig-gobject
-	url = https://github.com/ianprime0509/zig-gobject.git
