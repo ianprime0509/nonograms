@@ -25,6 +25,8 @@ const Color = struct {
     g: f64,
     b: f64,
 
+    pub const getGObjectType = gobject.ext.defineBoxed(Color, .{});
+
     const white = Color{ .r = 1, .g = 1, .b = 1 };
     const black = Color{ .r = 0, .g = 0, .b = 0 };
     const red = Color{ .r = 1, .g = 0, .b = 0 };
@@ -230,6 +232,7 @@ pub const View = extern struct {
     pub const Parent = gtk.Widget;
 
     const Private = struct {
+        box: *gtk.Box,
         drawing_area: *gtk.DrawingArea,
         color_picker: *ColorPicker,
         draw_start: Point,
@@ -248,7 +251,7 @@ pub const View = extern struct {
         .{ .inc = 10, .weight = 1 },
     };
 
-    pub const getGObjectType = gobject.ext.defineType(View, .{
+    pub const getGObjectType = gobject.ext.defineClass(View, .{
         .name = "NonogramsView",
         .instanceInit = &init,
         .classInit = &Class.init,
@@ -256,8 +259,13 @@ pub const View = extern struct {
         .private = .{ .Type = Private, .offset = &Private.offset },
     });
 
-    const solved = gobject.ext.defineSignal("solved", View, &.{}, void);
-    pub const connectSolved = solved.connect;
+    pub const signals = struct {
+        pub const solved = struct {
+            pub const name = "solved";
+            pub const connect = impl.connect;
+            const impl = gobject.ext.defineSignal(name, View, &.{}, void);
+        };
+    };
 
     pub fn new() *View {
         return View.newWith(.{});
@@ -272,39 +280,39 @@ pub const View = extern struct {
         gtk.Widget.setLayoutManager(view.as(gtk.Widget), gtk.BinLayout.new().as(gtk.LayoutManager));
 
         const drawing_area = view.private().drawing_area;
-        _ = gtk.DrawingArea.connectResize(drawing_area, *View, &handleResize, view, .{});
+        _ = gtk.DrawingArea.signals.resize.connect(drawing_area, *View, &handleResize, view, .{});
         gtk.DrawingArea.setDrawFunc(drawing_area, &draw, view, null);
 
         const drag = gtk.GestureDrag.new();
         gtk.GestureSingle.setButton(drag.as(gtk.GestureSingle), gdk.BUTTON_PRIMARY);
-        _ = gtk.GestureDrag.connectDragBegin(drag, *View, &handleDragBegin, view, .{});
-        _ = gtk.GestureDrag.connectDragUpdate(drag, *View, &handleDragUpdate, view, .{});
+        _ = gtk.GestureDrag.signals.drag_begin.connect(drag, *View, &handleDragBegin, view, .{});
+        _ = gtk.GestureDrag.signals.drag_update.connect(drag, *View, &handleDragUpdate, view, .{});
         gtk.Widget.addController(drawing_area.as(gtk.Widget), drag.as(gtk.EventController));
 
         const drag_secondary = gtk.GestureDrag.new();
         gtk.GestureSingle.setButton(drag_secondary.as(gtk.GestureSingle), gdk.BUTTON_SECONDARY);
-        _ = gtk.GestureDrag.connectDragBegin(drag_secondary, *View, &handleDragBeginSecondary, view, .{});
-        _ = gtk.GestureDrag.connectDragUpdate(drag_secondary, *View, &handleDragUpdateSecondary, view, .{});
+        _ = gtk.GestureDrag.signals.drag_begin.connect(drag_secondary, *View, &handleDragBeginSecondary, view, .{});
+        _ = gtk.GestureDrag.signals.drag_update.connect(drag_secondary, *View, &handleDragUpdateSecondary, view, .{});
         gtk.Widget.addController(drawing_area.as(gtk.Widget), drag_secondary.as(gtk.EventController));
 
         const motion = gtk.EventControllerMotion.new();
-        _ = gtk.EventControllerMotion.connectMotion(motion, *View, &handlePointerMotion, view, .{});
-        _ = gtk.EventControllerMotion.connectLeave(motion, *View, &handlePointerLeave, view, .{});
+        _ = gtk.EventControllerMotion.signals.motion.connect(motion, *View, &handlePointerMotion, view, .{});
+        _ = gtk.EventControllerMotion.signals.leave.connect(motion, *View, &handlePointerLeave, view, .{});
         gtk.Widget.addController(drawing_area.as(gtk.Widget), motion.as(gtk.EventController));
 
         const key = gtk.EventControllerKey.new();
-        _ = gtk.EventControllerKey.connectKeyPressed(key, *View, &handleKeyPressed, view, .{});
-        _ = gtk.EventControllerKey.connectKeyReleased(key, *View, &handleKeyReleased, view, .{});
+        _ = gtk.EventControllerKey.signals.key_pressed.connect(key, *View, &handleKeyPressed, view, .{});
+        _ = gtk.EventControllerKey.signals.key_released.connect(key, *View, &handleKeyReleased, view, .{});
         gtk.Widget.addController(view.as(gtk.Widget), key.as(gtk.EventController));
 
         view.private().arena = ArenaAllocator.init(raw_c_allocator);
 
-        _ = ColorPicker.connectColorSelected(view.private().color_picker, *View, &handleColorSelected, view, .{});
+        _ = ColorPicker.signals.color_selected.connect(view.private().color_picker, *View, &handleColorSelected, view, .{});
     }
 
     fn dispose(view: *View) callconv(.C) void {
-        while (gtk.Widget.getFirstChild(view.as(gtk.Widget))) |child| child.unparent();
-        Class.parent.as(gobject.Object.Class).dispose.?(view.as(gobject.Object));
+        gtk.Widget.disposeTemplate(view.as(gtk.Widget), getGObjectType());
+        gobject.Object.virtual_methods.dispose.call(Class.parent.as(gobject.Object.Class), view.as(gobject.Object));
     }
 
     fn finalize(view: *View) callconv(.C) void {
@@ -693,16 +701,9 @@ pub const View = extern struct {
         return .{ .tile_size = tile_size, .board_pos = board_pos };
     }
 
-    fn handleColorSelected(_: *ColorPicker, maybe_color: *glib.Variant, view: *View) callconv(.C) void {
+    fn handleColorSelected(_: *ColorPicker, maybe_color: ?*const Color, view: *View) callconv(.C) void {
         const state = &(view.private().state orelse return);
-        if (maybe_color.getMaybe()) |color| {
-            const r = color.getChildValue(0).getDouble();
-            const g = color.getChildValue(1).getDouble();
-            const b = color.getChildValue(2).getDouble();
-            state.selected_color = .{ .r = r, .g = g, .b = b };
-        } else {
-            state.selected_color = null;
-        }
+        state.selected_color = if (maybe_color) |color| color.* else null;
     }
 
     fn setColor(view: *View, row: usize, column: usize, color: ?Color) void {
@@ -714,7 +715,7 @@ pub const View = extern struct {
         state.tile_colors[index] = color;
         if (state.isSolved()) {
             state.solved = true;
-            solved.emit(view, null, .{}, null);
+            signals.solved.impl.emit(view, null, .{}, null);
         }
         gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
     }
@@ -735,12 +736,13 @@ pub const View = extern struct {
         }
 
         fn init(class: *Class) callconv(.C) void {
-            gobject.Object.Class.implementDispose(class, &dispose);
-            gobject.Object.Class.implementFinalize(class, &finalize);
+            gobject.Object.virtual_methods.dispose.implement(class, &dispose);
+            gobject.Object.virtual_methods.finalize.implement(class, &finalize);
             gtk.Widget.Class.setTemplateFromResource(class.as(gtk.Widget.Class), "/dev/ianjohnson/Nonograms/ui/view.ui");
+            class.bindTemplateChildPrivate("box", .{});
             class.bindTemplateChildPrivate("drawing_area", .{});
             class.bindTemplateChildPrivate("color_picker", .{});
-            solved.register(.{});
+            signals.solved.impl.register(.{});
         }
 
         fn bindTemplateChildPrivate(class: *Class, comptime name: [:0]const u8, comptime options: gtk.ext.BindTemplateChildOptions) void {
@@ -763,7 +765,7 @@ pub const ColorPicker = extern struct {
         var offset: c_int = 0;
     };
 
-    pub const getGObjectType = gobject.ext.defineType(ColorPicker, .{
+    pub const getGObjectType = gobject.ext.defineClass(ColorPicker, .{
         .name = "NonogramsColorPicker",
         .instanceInit = &init,
         .classInit = &Class.init,
@@ -771,8 +773,13 @@ pub const ColorPicker = extern struct {
         .private = .{ .Type = Private, .offset = &Private.offset },
     });
 
-    const color_selected = gobject.ext.defineSignal("color-selected", ColorPicker, &.{*glib.Variant}, void);
-    pub const connectColorSelected = color_selected.connect;
+    pub const signals = struct {
+        pub const color_selected = struct {
+            pub const name = "color-selected";
+            pub const connect = impl.connect;
+            const impl = gobject.ext.defineSignal(name, ColorPicker, &.{?*const Color}, void);
+        };
+    };
 
     pub fn new() *ColorPicker {
         return ColorPicker.newWith(.{});
@@ -791,8 +798,8 @@ pub const ColorPicker = extern struct {
     }
 
     fn dispose(picker: *ColorPicker) callconv(.C) void {
-        while (gtk.Widget.getFirstChild(picker.as(gtk.Widget))) |child| child.unparent();
-        Class.parent.as(gobject.Object.Class).dispose.?(picker.as(gobject.Object));
+        gtk.Widget.disposeTemplate(picker.as(gtk.Widget), getGObjectType());
+        gobject.Object.virtual_methods.dispose.call(Class.parent.as(gobject.Object.Class), picker.as(gobject.Object));
     }
 
     fn finalize(picker: *ColorPicker) callconv(.C) void {
@@ -812,7 +819,7 @@ pub const ColorPicker = extern struct {
             0,
         );
         gtk.Box.append(picker.private().box, none_button.as(gtk.Widget));
-        _ = gtk.ToggleButton.connectToggled(none_button, *ColorPicker, &handleButtonToggled, picker, .{});
+        _ = gtk.ToggleButton.signals.toggled.connect(none_button, *ColorPicker, &handleButtonToggled, picker, .{});
         buttons.append(allocator, none_button) catch oom();
 
         var last_button: *gtk.ToggleButton = none_button.as(gtk.ToggleButton);
@@ -824,7 +831,7 @@ pub const ColorPicker = extern struct {
             if (mem.eql(u8, color.name, puzzle.default_color)) {
                 gtk.ToggleButton.setActive(button.as(gtk.ToggleButton), 1);
             }
-            _ = gtk.ToggleButton.connectToggled(button, *ColorPicker, &handleButtonToggled, picker, .{});
+            _ = gtk.ToggleButton.signals.toggled.connect(button, *ColorPicker, &handleButtonToggled, picker, .{});
             buttons.append(allocator, button) catch oom();
         }
 
@@ -843,9 +850,9 @@ pub const ColorPicker = extern struct {
             return;
         }
 
-        const ColorTuple = struct { f64, f64, f64 };
-        const color: ?ColorTuple = if (button.getSelectionColor()) |color| .{ color.r, color.g, color.b } else null;
-        color_selected.emit(picker, null, .{glib.ext.Variant.newFrom(color)}, null);
+        signals.color_selected.impl.emit(picker, null, .{
+            if (button.getSelectionColor()) |color| &color else null,
+        }, null);
     }
 
     fn private(picker: *ColorPicker) *Private {
@@ -864,11 +871,11 @@ pub const ColorPicker = extern struct {
         }
 
         fn init(class: *Class) callconv(.C) void {
-            gobject.Object.Class.implementDispose(class, &dispose);
-            gobject.Object.Class.implementFinalize(class, &finalize);
+            gobject.Object.virtual_methods.dispose.implement(class, &dispose);
+            gobject.Object.virtual_methods.finalize.implement(class, &finalize);
             gtk.Widget.Class.setTemplateFromResource(class.as(gtk.Widget.Class), "/dev/ianjohnson/Nonograms/ui/color-picker.ui");
             class.bindTemplateChildPrivate("box", .{});
-            color_selected.register(.{});
+            signals.color_selected.impl.register(.{});
         }
 
         fn bindTemplateChildPrivate(class: *Class, comptime name: [:0]const u8, comptime options: gtk.ext.BindTemplateChildOptions) void {
@@ -894,10 +901,11 @@ pub const ColorButton = extern struct {
 
     const text_padding = 0.2;
 
-    pub const getGObjectType = gobject.ext.defineType(ColorButton, .{
+    pub const getGObjectType = gobject.ext.defineClass(ColorButton, .{
         .name = "NonogramsColorButton",
         .instanceInit = &init,
         .classInit = &Class.init,
+        .parent_class = &Class.parent,
         .private = .{ .Type = Private, .offset = &Private.offset },
     });
 
@@ -916,6 +924,11 @@ pub const ColorButton = extern struct {
     fn init(button: *ColorButton, _: *Class) callconv(.C) void {
         gtk.Widget.initTemplate(button.as(gtk.Widget));
         gtk.DrawingArea.setDrawFunc(button.private().drawing_area, &draw, button, null);
+    }
+
+    fn dispose(button: *ColorButton) callconv(.C) void {
+        gtk.Widget.disposeTemplate(button.as(gtk.Widget), getGObjectType());
+        gobject.Object.virtual_methods.dispose.call(Class.parent.as(gobject.Object.Class), button.as(gobject.Object));
     }
 
     pub fn getSelectionColor(button: *ColorButton) ?Color {
@@ -984,6 +997,8 @@ pub const ColorButton = extern struct {
     pub const Class = extern struct {
         parent_class: Parent.Class,
 
+        var parent: *Parent.Class = undefined;
+
         pub const Instance = ColorButton;
 
         pub fn as(class: *Class, comptime T: type) *T {
@@ -991,6 +1006,7 @@ pub const ColorButton = extern struct {
         }
 
         fn init(class: *Class) callconv(.C) void {
+            gobject.Object.virtual_methods.dispose.implement(class, &dispose);
             gtk.Widget.Class.setTemplateFromResource(class.as(gtk.Widget.Class), "/dev/ianjohnson/Nonograms/ui/color-button.ui");
             class.bindTemplateChildPrivate("drawing_area", .{});
         }

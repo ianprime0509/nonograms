@@ -40,7 +40,7 @@ pub fn main() !void {
 
     const app = Application.new();
     const status = gio.Application.run(app.as(gio.Application), @intCast(std.os.argv.len), std.os.argv.ptr);
-    std.os.exit(@intCast(status));
+    std.process.exit(@intCast(status));
 }
 
 const Application = extern struct {
@@ -48,7 +48,7 @@ const Application = extern struct {
 
     pub const Parent = adw.Application;
 
-    pub const getGObjectType = gobject.ext.defineType(Application, .{
+    pub const getGObjectType = gobject.ext.defineClass(Application, .{
         .name = "NonogramsApplication",
         .classInit = &Class.init,
     });
@@ -79,7 +79,7 @@ const Application = extern struct {
         }
 
         fn init(class: *Class) callconv(.C) void {
-            gio.Application.Class.implementActivate(class, &Application.activateImpl);
+            gio.Application.virtual_methods.activate.implement(class, &Application.activateImpl);
         }
     };
 };
@@ -88,7 +88,6 @@ const ApplicationWindow = extern struct {
     parent_instance: Parent,
 
     pub const Parent = adw.ApplicationWindow;
-    pub const Implements = Parent.Implements;
 
     const Private = struct {
         window_title: *adw.WindowTitle,
@@ -113,7 +112,7 @@ const ApplicationWindow = extern struct {
         var offset: c_int = 0;
     };
 
-    pub const getGObjectType = gobject.ext.defineType(ApplicationWindow, .{
+    pub const getGObjectType = gobject.ext.defineClass(ApplicationWindow, .{
         .name = "NonogramsApplicationWindow",
         .instanceInit = &init,
         .classInit = &Class.init,
@@ -133,26 +132,31 @@ const ApplicationWindow = extern struct {
         gtk.Widget.initTemplate(win.as(gtk.Widget));
 
         const open = gio.SimpleAction.new("open", null);
-        _ = gio.SimpleAction.connectActivate(open, *ApplicationWindow, &handleOpenAction, win, .{});
+        _ = gio.SimpleAction.signals.activate.connect(open, *ApplicationWindow, &handleOpenAction, win, .{});
         gio.ActionMap.addAction(win.as(gio.ActionMap), open.as(gio.Action));
         const clear = gio.SimpleAction.new("clear", null);
         gio.SimpleAction.setEnabled(clear, 0);
         gio.ActionMap.addAction(win.as(gio.ActionMap), clear.as(gio.Action));
-        _ = gio.SimpleAction.connectActivate(clear, *ApplicationWindow, &handleClearAction, win, .{});
+        _ = gio.SimpleAction.signals.activate.connect(clear, *ApplicationWindow, &handleClearAction, win, .{});
         win.private().clear_action = clear;
         const about = gio.SimpleAction.new("about", null);
-        _ = gio.SimpleAction.connectActivate(about, *ApplicationWindow, &handleAboutAction, win, .{});
+        _ = gio.SimpleAction.signals.activate.connect(about, *ApplicationWindow, &handleAboutAction, win, .{});
         gio.ActionMap.addAction(win.as(gio.ActionMap), about.as(gio.Action));
 
-        _ = gtk.Window.connectCloseRequest(win, ?*anyopaque, &handleCloseRequest, null, .{});
-        _ = gtk.Button.connectClicked(win.private().library_menu_button, *ApplicationWindow, &handleLibraryMenuButtonClicked, win, .{});
-        _ = gtk.ListBox.connectRowActivated(win.private().library_list, *ApplicationWindow, &handleLibraryRowActivated, win, .{});
-        _ = gtk.ListBox.connectRowActivated(win.private().puzzle_list, *ApplicationWindow, &handlePuzzleRowActivated, win, .{});
-        _ = View.connectSolved(win.private().view, *ApplicationWindow, &handlePuzzleSolved, win, .{});
+        _ = gtk.Window.signals.close_request.connect(win, ?*anyopaque, &handleCloseRequest, null, .{});
+        _ = gtk.Button.signals.clicked.connect(win.private().library_menu_button, *ApplicationWindow, &handleLibraryMenuButtonClicked, win, .{});
+        _ = gtk.ListBox.signals.row_activated.connect(win.private().library_list, *ApplicationWindow, &handleLibraryRowActivated, win, .{});
+        _ = gtk.ListBox.signals.row_activated.connect(win.private().puzzle_list, *ApplicationWindow, &handlePuzzleRowActivated, win, .{});
+        _ = View.signals.solved.connect(win.private().view, *ApplicationWindow, &handlePuzzleSolved, win, .{});
 
         gtk.Window.setFocus(win.as(gtk.Window), win.private().view.as(gtk.Widget));
 
         win.loadLibrary();
+    }
+
+    fn dispose(win: *ApplicationWindow) callconv(.C) void {
+        gtk.Widget.disposeTemplate(win.as(gtk.Widget), getGObjectType());
+        gobject.Object.virtual_methods.dispose.call(Class.parent.as(gobject.Object.Class), win.as(gobject.Object));
     }
 
     fn finalize(win: *ApplicationWindow) callconv(.C) void {
@@ -304,7 +308,7 @@ const ApplicationWindow = extern struct {
         gtk.FileFilter.addPattern(filter, "*.pbn");
         gtk.FileFilter.addPattern(filter, "*.xml");
         gtk.FileChooser.addFilter(chooser.as(gtk.FileChooser), filter);
-        _ = gtk.NativeDialog.connectResponse(chooser, *ApplicationWindow, &handleOpenResponse, win, .{});
+        _ = gtk.NativeDialog.signals.response.connect(chooser, *ApplicationWindow, &handleOpenResponse, win, .{});
         gtk.NativeDialog.show(chooser.as(gtk.NativeDialog));
     }
 
@@ -312,7 +316,7 @@ const ApplicationWindow = extern struct {
         win.private().view.clear();
         const toast = adw.Toast.new("Puzzle cleared");
         adw.Toast.setButtonLabel(toast, "Undo");
-        _ = adw.Toast.connectButtonClicked(toast, *ApplicationWindow, &handleUndoClear, win, .{});
+        _ = adw.Toast.signals.button_clicked.connect(toast, *ApplicationWindow, &handleUndoClear, win, .{});
         adw.ToastOverlay.addToast(win.private().toast_overlay, toast);
     }
 
@@ -423,7 +427,8 @@ const ApplicationWindow = extern struct {
         }
 
         fn init(class: *Class) callconv(.C) void {
-            gobject.Object.Class.implementFinalize(class, &finalize);
+            gobject.Object.virtual_methods.dispose.implement(class, &dispose);
+            gobject.Object.virtual_methods.finalize.implement(class, &finalize);
             gtk.Widget.Class.setTemplateFromResource(class.as(gtk.Widget.Class), "/dev/ianjohnson/Nonograms/ui/window.ui");
             class.bindTemplateChildPrivate("window_title", .{});
             class.bindTemplateChildPrivate("toast_overlay", .{});

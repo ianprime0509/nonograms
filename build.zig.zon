@@ -14,16 +14,16 @@
     },
     .dependencies = .{
         .xml = .{
-            .url = "git+https://github.com/ianprime0509/zig-xml#5d995ef95bb5796f38bf16c0d4750cba06d86549",
-            .hash = "1220d70515390ed942a0864fe3aad2f3b485b3fcb9df07d61dbefea9873373647e33",
+            .url = "git+https://github.com/ianprime0509/zig-xml?ref=main#0747fa10b28ade9a8516bc5b122dcad997bd8fa7",
+            .hash = "1220fcb9b8da8bcfdaa18c81678c6b5cf41d63a2bf9fde7551b4390279cc473a2520",
         },
         .gobject = .{
-            .url = "https://github.com/ianprime0509/zig-gobject/releases/download/v0.1.1/bindings-gnome45.3.tar.zst",
-            .hash = "12203095b95283c931022f90ba25bf5bd62cff33a97a81a44b1709f6f5909cae5950",
+            .url = "https://github.com/ianprime0509/zig-gobject/releases/download/v0.2.0/bindings-gnome46.tar.zst",
+            .hash = "122072ebbd8a100c9e2f682cd130c3707a8441d1bba2c8f5f38111a23a2db1361de7",
         },
         .libintl = .{
-            .url = "git+https://github.com/ianprime0509/zig-libintl#86765111b6d6233713b4dc4c7fd91aad1e87dbdb",
-            .hash = "12202370a001c035bf28c62557fdefed81719bdd89a0c7dd7e428b90eeaaff524a61",
+            .url = "git+https://github.com/ianprime0509/zig-libintl?ref=main#0c436aa63c31bb8ad5d7d59800638f784e1e04a5",
+            .hash = "1220e1f1576da3188a8749940f836cfb4f858ee3455660b05c67984ddc29cf63956e",
         },
     },
 }

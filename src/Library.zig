@@ -64,7 +64,7 @@ pub fn copyDefaultPuzzles() !void {
     defer library_dir.close();
 
     for (default_puzzles) |default_puzzle| {
-        try library_dir.writeFile(default_puzzle.name, default_puzzle.data);
+        try library_dir.writeFile(.{ .sub_path = default_puzzle.name, .data = default_puzzle.data });
     }
 }
 
