@@ -199,6 +199,7 @@ const ApplicationWindow = extern struct {
             gtk.ListBox.append(library_list, action_row.as(gtk.Widget));
         }
 
+        adw.WindowTitle.setSubtitle(win.private().window_title, "");
         gtk.Stack.setVisibleChildName(win.private().stack, "library");
         gtk.Widget.setVisible(win.private().library_menu_button.as(gtk.Widget), 0);
         gtk.Widget.setVisible(win.private().info_menu_button.as(gtk.Widget), 0);
