@@ -8,6 +8,10 @@ pub fn build(b: *std.Build) !void {
     const gobject = b.dependency("gobject", .{});
     const xml = b.dependency("xml", .{}).module("xml");
 
+    const locale_dir: std.Build.InstallDir = .{ .custom = "share/locale" };
+    const build_options = b.addOptions();
+    build_options.addOption([]const u8, "locale_dir", b.getInstallPath(locale_dir, ""));
+
     const exe = b.addExecutable(.{
         .name = "nonograms",
         .root_source_file = b.path("src/main.zig"),
@@ -15,6 +19,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     exe.linkLibC();
+    exe.root_module.addOptions("build_options", build_options);
     exe.root_module.addImport("xml", xml);
     exe.root_module.addImport("glib", gobject.module("glib2"));
     exe.root_module.addImport("gobject", gobject.module("gobject2"));

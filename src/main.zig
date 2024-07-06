@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_options = @import("build_options");
 const glib = @import("glib");
 const gobject = @import("gobject");
 const gio = @import("gio");
@@ -21,13 +22,7 @@ pub const application_id = "dev.ianjohnson.Nonograms";
 const package = "nonograms";
 
 pub fn main() !void {
-    // Initialize libintl
-    // TODO: figure out what path to use here (or rewrite gettext in Zig and avoid all this complexity???)
-    const cwd = try fs.cwd().realpathAlloc(c_allocator, ".");
-    defer c_allocator.free(cwd);
-    const locale_path = try fs.path.joinZ(c_allocator, &.{ cwd, "locale" });
-    defer c_allocator.free(locale_path);
-    intl.bindTextDomain(package, locale_path);
+    intl.bindTextDomain(package, build_options.locale_dir ++ "");
     intl.bindTextDomainCodeset(package, "UTF-8");
     intl.setTextDomain(package);
 
