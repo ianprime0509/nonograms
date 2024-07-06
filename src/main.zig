@@ -26,13 +26,6 @@ pub fn main() !void {
     intl.bindTextDomainCodeset(package, "UTF-8");
     intl.setTextDomain(package);
 
-    // Ensure types are defined
-    _ = Application.getGObjectType();
-    _ = ApplicationWindow.getGObjectType();
-    _ = ColorButton.getGObjectType();
-    _ = ColorPicker.getGObjectType();
-    _ = View.getGObjectType();
-
     const app = Application.new();
     const status = gio.Application.run(app.as(gio.Application), @intCast(std.os.argv.len), std.os.argv.ptr);
     std.process.exit(@intCast(status));
