@@ -3,21 +3,12 @@
 
 const std = @import("std");
 const xml = @import("xml");
-const ascii = std.ascii;
-const fmt = std.fmt;
-const fs = std.fs;
-const io = std.io;
 const mem = std.mem;
-const meta = std.meta;
 const Allocator = mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
-const ArrayListUnmanaged = std.ArrayListUnmanaged;
-const AutoHashMapUnmanaged = std.AutoHashMapUnmanaged;
-const EnumArray = std.EnumArray;
-const StringArrayHashMapUnmanaged = std.StringArrayHashMapUnmanaged;
 
 pub const Error = error{InvalidPbn} || Allocator.Error;
-pub const WriteError = fs.File.OpenError || fs.File.SyncError || fs.File.WriteError;
+pub const WriteError = std.fs.File.OpenError || std.fs.File.SyncError || std.fs.File.WriteError;
 
 pub const PuzzleSet = struct {
     puzzles: []const Puzzle,
@@ -62,9 +53,9 @@ pub const PuzzleSet = struct {
     }
 
     pub fn writeFile(set: PuzzleSet, path: [:0]const u8) WriteError!void {
-        const file = try fs.cwd().createFile(path, .{});
+        const file = try std.fs.cwd().createFile(path, .{});
         defer file.close();
-        var buffered_writer = io.bufferedWriter(file.writer());
+        var buffered_writer = std.io.bufferedWriter(file.writer());
         var writer = xml.writer(buffered_writer.writer());
         try set.writeDoc(&writer);
         try buffered_writer.flush();
@@ -101,8 +92,8 @@ pub const PuzzleSet = struct {
         var author: ?[:0]const u8 = null;
         var author_id: ?[:0]const u8 = null;
         var copyright: ?[:0]const u8 = null;
-        var puzzles = ArrayListUnmanaged(Puzzle){};
-        var notes = ArrayListUnmanaged([:0]const u8){};
+        var puzzles = std.ArrayList(Puzzle).init(allocator);
+        var notes = std.ArrayList([:0]const u8).init(allocator);
 
         while (try children.next()) |event| {
             switch (event) {
@@ -119,9 +110,9 @@ pub const PuzzleSet = struct {
                 } else if (child.name.is(null, "copyright")) {
                     copyright = try textContent(allocator, children.children());
                 } else if (child.name.is(null, "puzzle")) {
-                    try puzzles.append(allocator, try Puzzle.parse(allocator, child, children.children()));
+                    try puzzles.append(try Puzzle.parse(allocator, child, children.children()));
                 } else if (child.name.is(null, "note")) {
-                    try notes.append(allocator, try textContent(allocator, children.children()));
+                    try notes.append(try textContent(allocator, children.children()));
                 } else {
                     try children.children().skip();
                 },
@@ -136,8 +127,8 @@ pub const PuzzleSet = struct {
             .author = author,
             .author_id = author_id,
             .copyright = copyright,
-            .puzzles = try puzzles.toOwnedSlice(allocator),
-            .notes = try notes.toOwnedSlice(allocator),
+            .puzzles = try puzzles.toOwnedSlice(),
+            .notes = try notes.toOwnedSlice(),
             .arena = arena,
         };
     }
@@ -181,7 +172,7 @@ pub const Puzzle = struct {
     author_id: ?[:0]const u8,
     copyright: ?[:0]const u8,
     description: ?[:0]const u8,
-    colors: StringArrayHashMapUnmanaged(Color),
+    colors: std.StringArrayHashMapUnmanaged(Color),
     default_color: [:0]const u8,
     background_color: [:0]const u8,
     row_clues: Clues,
@@ -197,17 +188,17 @@ pub const Puzzle = struct {
         var author_id: ?[:0]const u8 = null;
         var copyright: ?[:0]const u8 = null;
         var description: ?[:0]const u8 = null;
-        var colors = StringArrayHashMapUnmanaged(Color){};
+        var colors = std.StringArrayHashMap(Color).init(allocator);
         var default_color: ?[:0]const u8 = null;
         var background_color: ?[:0]const u8 = null;
         var row_clues: ?Clues = null;
         var column_clues: ?Clues = null;
-        var solutions = ArrayListUnmanaged(Solution){};
-        var notes = ArrayListUnmanaged([:0]const u8){};
+        var solutions = std.ArrayList(Solution).init(allocator);
+        var notes = std.ArrayList([:0]const u8).init(allocator);
 
         // Predefined colors
-        try colors.put(allocator, "black", Color.black);
-        try colors.put(allocator, "white", Color.white);
+        try colors.put("black", Color.black);
+        try colors.put("white", Color.white);
 
         for (start.attributes) |attr| {
             if (attr.name.is(null, "defaultcolor")) {
@@ -235,7 +226,7 @@ pub const Puzzle = struct {
                     description = try textContent(allocator, children.children());
                 } else if (child.name.is(null, "color")) {
                     const color = try Color.parse(allocator, child, children.children());
-                    try colors.put(allocator, color.name, color);
+                    try colors.put(color.name, color);
                 } else if (child.name.is(null, "clues")) {
                     const clues = try Clues.parse(allocator, child, children.children());
                     switch (clues.type) {
@@ -243,9 +234,9 @@ pub const Puzzle = struct {
                         .columns => column_clues = clues,
                     }
                 } else if (child.name.is(null, "solution")) {
-                    try solutions.append(allocator, try Solution.parse(allocator, child, children.children()));
+                    try solutions.append(try Solution.parse(allocator, child, children.children()));
                 } else if (child.name.is(null, "note")) {
-                    try notes.append(allocator, try textContent(allocator, children.children()));
+                    try notes.append(try textContent(allocator, children.children()));
                 } else {
                     try children.children().skip();
                 },
@@ -275,15 +266,15 @@ pub const Puzzle = struct {
             .author_id = author_id,
             .copyright = copyright,
             .description = description,
-            .colors = colors,
+            .colors = colors.unmanaged,
             .default_color = default_color orelse "black",
             .background_color = background_color orelse "white",
             // row_clues and column_clues cannot be null here since we tried to
             // derive them above, already failing if that wasn't possible
             .row_clues = row_clues.?,
             .column_clues = column_clues.?,
-            .solutions = try solutions.toOwnedSlice(allocator),
-            .notes = try notes.toOwnedSlice(allocator),
+            .solutions = try solutions.toOwnedSlice(),
+            .notes = try notes.toOwnedSlice(),
         };
     }
 
@@ -338,15 +329,15 @@ pub const Color = struct {
     pub fn toRgb(color: Color) error{InvalidColor}!struct { r: u8, g: u8, b: u8 } {
         if (color.value.len == 3) {
             return .{
-                .r = fmt.parseInt(u8, &.{ color.value[0], color.value[0] }, 16) catch return error.InvalidColor,
-                .g = fmt.parseInt(u8, &.{ color.value[1], color.value[1] }, 16) catch return error.InvalidColor,
-                .b = fmt.parseInt(u8, &.{ color.value[2], color.value[2] }, 16) catch return error.InvalidColor,
+                .r = std.fmt.parseInt(u8, &.{ color.value[0], color.value[0] }, 16) catch return error.InvalidColor,
+                .g = std.fmt.parseInt(u8, &.{ color.value[1], color.value[1] }, 16) catch return error.InvalidColor,
+                .b = std.fmt.parseInt(u8, &.{ color.value[2], color.value[2] }, 16) catch return error.InvalidColor,
             };
         } else if (color.value.len == 6) {
             return .{
-                .r = fmt.parseInt(u8, color.value[0..2], 16) catch return error.InvalidColor,
-                .g = fmt.parseInt(u8, color.value[2..4], 16) catch return error.InvalidColor,
-                .b = fmt.parseInt(u8, color.value[4..6], 16) catch return error.InvalidColor,
+                .r = std.fmt.parseInt(u8, color.value[0..2], 16) catch return error.InvalidColor,
+                .g = std.fmt.parseInt(u8, color.value[2..4], 16) catch return error.InvalidColor,
+                .b = std.fmt.parseInt(u8, color.value[4..6], 16) catch return error.InvalidColor,
             };
         } else {
             return error.InvalidColor;
@@ -405,18 +396,18 @@ pub const Clues = struct {
 
     fn parse(allocator: Allocator, start: xml.Event.ElementStart, children: anytype) !Clues {
         var @"type": ?Type = null;
-        var lines = ArrayListUnmanaged(Line){};
+        var lines = std.ArrayList(Line).init(allocator);
 
         for (start.attributes) |attr| {
             if (attr.name.is(null, "type")) {
-                @"type" = meta.stringToEnum(Type, attr.value) orelse return error.InvalidPbn;
+                @"type" = std.meta.stringToEnum(Type, attr.value) orelse return error.InvalidPbn;
             }
         }
 
         while (try children.next()) |event| {
             switch (event) {
                 .element_start => |child| if (child.name.is(null, "line")) {
-                    try lines.append(allocator, try Line.parse(allocator, children.children()));
+                    try lines.append(try Line.parse(allocator, children.children()));
                 } else {
                     try children.children().skip();
                 },
@@ -426,7 +417,7 @@ pub const Clues = struct {
 
         return .{
             .type = @"type" orelse return error.InvalidPbn,
-            .lines = try lines.toOwnedSlice(allocator),
+            .lines = try lines.toOwnedSlice(),
         };
     }
 
@@ -444,12 +435,12 @@ pub const Line = struct {
     counts: []const Count,
 
     fn parse(allocator: Allocator, children: anytype) !Line {
-        var counts = ArrayListUnmanaged(Count){};
+        var counts = std.ArrayList(Count).init(allocator);
 
         while (try children.next()) |event| {
             switch (event) {
                 .element_start => |child| if (child.name.is(null, "count")) {
-                    try counts.append(allocator, try Count.parse(allocator, child, children.children()));
+                    try counts.append(try Count.parse(allocator, child, children.children()));
                 } else {
                     try children.children().skip();
                 },
@@ -458,7 +449,7 @@ pub const Line = struct {
         }
 
         return .{
-            .counts = try counts.toOwnedSlice(allocator),
+            .counts = try counts.toOwnedSlice(),
         };
     }
 
@@ -487,7 +478,7 @@ pub const Count = struct {
         const n = blk: {
             const content = try textContent(allocator, children.children());
             defer allocator.free(content);
-            break :blk fmt.parseInt(usize, content, 10) catch return error.InvalidPbn;
+            break :blk std.fmt.parseInt(usize, content, 10) catch return error.InvalidPbn;
         };
 
         return .{
@@ -502,7 +493,7 @@ pub const Count = struct {
             try writer.writeAttribute(.{ .local = "color" }, color);
         }
         var buf: [32]u8 = undefined;
-        try writer.writeElementContent(fmt.bufPrint(&buf, "{}", .{count.n}) catch unreachable);
+        try writer.writeElementContent(std.fmt.bufPrint(&buf, "{}", .{count.n}) catch unreachable);
         try writer.writeElementEnd(.{ .local = "count" });
     }
 };
@@ -517,11 +508,11 @@ pub const Solution = struct {
     fn parse(allocator: Allocator, start: xml.Event.ElementStart, children: anytype) !Solution {
         var @"type": ?Type = null;
         var image: ?Image = null;
-        var notes = ArrayListUnmanaged([:0]const u8){};
+        var notes = std.ArrayList([:0]const u8).init(allocator);
 
         for (start.attributes) |attr| {
             if (attr.name.is(null, "type")) {
-                @"type" = meta.stringToEnum(Type, attr.value) orelse return error.InvalidPbn;
+                @"type" = std.meta.stringToEnum(Type, attr.value) orelse return error.InvalidPbn;
             }
         }
 
@@ -530,7 +521,7 @@ pub const Solution = struct {
                 .element_start => |child| if (child.name.is(null, "image")) {
                     image = try Image.parse(allocator, children.children());
                 } else if (child.name.is(null, "note")) {
-                    try notes.append(allocator, try textContent(allocator, children.children()));
+                    try notes.append(try textContent(allocator, children.children()));
                 } else {
                     try children.children().skip();
                 },
@@ -541,7 +532,7 @@ pub const Solution = struct {
         return .{
             .type = @"type" orelse .goal,
             .image = image orelse return error.InvalidPbn,
-            .notes = try notes.toOwnedSlice(allocator),
+            .notes = try notes.toOwnedSlice(),
         };
     }
 
@@ -569,12 +560,12 @@ pub const Image = struct {
     }
 
     pub fn fromText(allocator: Allocator, text: []const u8) Error!Image {
-        var chars = ArrayListUnmanaged([]const u8){};
+        var chars = std.ArrayList([]const u8).init(allocator);
         errdefer {
             for (chars.items) |options| {
                 allocator.free(options);
             }
-            chars.deinit(allocator);
+            chars.deinit();
         }
 
         var rows: usize = 0;
@@ -588,15 +579,15 @@ pub const Image = struct {
             var row_pos: usize = 0;
 
             while (row_pos < row_chars.len) {
-                if (ascii.isWhitespace(row_chars[row_pos])) {
+                if (std.ascii.isWhitespace(row_chars[row_pos])) {
                     continue;
                 } else if (row_chars[row_pos] == '[') {
                     const options_end = mem.indexOfScalarPos(u8, row_chars, row_pos + 1, ']') orelse return error.InvalidPbn;
-                    try chars.append(allocator, try allocator.dupeZ(u8, row_chars[row_pos + 1 .. options_end]));
+                    try chars.append(try allocator.dupeZ(u8, row_chars[row_pos + 1 .. options_end]));
                     row_pos = options_end + 1;
                     row_columns += 1;
                 } else {
-                    try chars.append(allocator, try allocator.dupeZ(u8, &.{row_chars[row_pos]}));
+                    try chars.append(try allocator.dupeZ(u8, &.{row_chars[row_pos]}));
                     row_pos += 1;
                     row_columns += 1;
                 }
@@ -614,14 +605,14 @@ pub const Image = struct {
         return .{
             .rows = rows,
             .columns = columns,
-            .chars = try chars.toOwnedSlice(allocator),
+            .chars = try chars.toOwnedSlice(),
         };
     }
 
     pub fn toClues(image: Image, allocator: Allocator, colors: []const Color, background_color: []const u8) Error!struct { rows: Clues, columns: Clues } {
-        var color_names = AutoHashMapUnmanaged(u8, [:0]const u8){};
-        defer color_names.deinit(allocator);
-        try color_names.ensureTotalCapacity(allocator, @intCast(colors.len));
+        var color_names = std.AutoHashMap(u8, [:0]const u8).init(allocator);
+        defer color_names.deinit();
+        try color_names.ensureTotalCapacity(@intCast(colors.len));
         var bg_color_char: ?u8 = null;
         for (colors) |color| {
             if (color.char) |char| {
@@ -632,9 +623,9 @@ pub const Image = struct {
             }
         }
 
-        var row_lines = try ArrayListUnmanaged(Line).initCapacity(allocator, image.rows);
+        var row_lines = try std.ArrayList(Line).initCapacity(allocator, image.rows);
         for (0..image.rows) |i| {
-            var counts = ArrayListUnmanaged(Count){};
+            var counts = std.ArrayList(Count).init(allocator);
             var run_color: ?u8 = null;
             var run_len: usize = 0;
             for (0..image.columns) |j| {
@@ -645,7 +636,7 @@ pub const Image = struct {
                 const color = options[0];
                 if (color != run_color) {
                     if (run_len > 0 and run_color != bg_color_char) {
-                        try counts.append(allocator, .{
+                        try counts.append(.{
                             .color = color_names.get(run_color.?) orelse return error.InvalidPbn,
                             .n = run_len,
                         });
@@ -656,17 +647,17 @@ pub const Image = struct {
                 run_len += 1;
             }
             if (run_len > 0 and run_color != bg_color_char) {
-                try counts.append(allocator, .{
+                try counts.append(.{
                     .color = color_names.get(run_color.?) orelse return error.InvalidPbn,
                     .n = run_len,
                 });
             }
-            row_lines.appendAssumeCapacity(.{ .counts = try counts.toOwnedSlice(allocator) });
+            row_lines.appendAssumeCapacity(.{ .counts = try counts.toOwnedSlice() });
         }
 
-        var column_lines = try ArrayListUnmanaged(Line).initCapacity(allocator, image.columns);
+        var column_lines = try std.ArrayList(Line).initCapacity(allocator, image.columns);
         for (0..image.columns) |j| {
-            var counts = ArrayListUnmanaged(Count){};
+            var counts = std.ArrayList(Count).init(allocator);
             var run_color: ?u8 = null;
             var run_len: usize = 0;
             for (0..image.rows) |i| {
@@ -677,7 +668,7 @@ pub const Image = struct {
                 const color = options[0];
                 if (color != run_color) {
                     if (run_len > 0 and run_color != bg_color_char) {
-                        try counts.append(allocator, .{
+                        try counts.append(.{
                             .color = color_names.get(run_color.?) orelse return error.InvalidPbn,
                             .n = run_len,
                         });
@@ -688,17 +679,17 @@ pub const Image = struct {
                 run_len += 1;
             }
             if (run_len > 0 and run_color != bg_color_char) {
-                try counts.append(allocator, .{
+                try counts.append(.{
                     .color = color_names.get(run_color.?) orelse return error.InvalidPbn,
                     .n = run_len,
                 });
             }
-            column_lines.appendAssumeCapacity(.{ .counts = try counts.toOwnedSlice(allocator) });
+            column_lines.appendAssumeCapacity(.{ .counts = try counts.toOwnedSlice() });
         }
 
         return .{
-            .rows = .{ .type = .rows, .lines = try row_lines.toOwnedSlice(allocator) },
-            .columns = .{ .type = .columns, .lines = try column_lines.toOwnedSlice(allocator) },
+            .rows = .{ .type = .rows, .lines = try row_lines.toOwnedSlice() },
+            .columns = .{ .type = .columns, .lines = try column_lines.toOwnedSlice() },
         };
     }
 
@@ -735,12 +726,12 @@ fn writeTextElement(writer: anytype, name: []const u8, value: []const u8) !void 
 }
 
 fn textContent(allocator: Allocator, children: anytype) ![:0]u8 {
-    var text = ArrayListUnmanaged(u8){};
+    var text = std.ArrayList(u8).init(allocator);
     while (try children.next()) |event| {
         switch (event) {
-            .element_content => |e| try text.appendSlice(allocator, e.content),
+            .element_content => |e| try text.appendSlice(e.content),
             else => {},
         }
     }
-    return try text.toOwnedSliceSentinel(allocator, 0);
+    return try text.toOwnedSliceSentinel(0);
 }

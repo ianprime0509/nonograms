@@ -8,13 +8,11 @@ const adw = @import("adw");
 const intl = @import("libintl");
 const pbn = @import("pbn.zig");
 const view = @import("view.zig");
-const ArrayListUnmanaged = std.ArrayListUnmanaged;
 const ColorButton = view.ColorButton;
 const ColorPicker = view.ColorPicker;
 const Library = @import("Library.zig");
 const View = view.View;
 const c_allocator = std.heap.c_allocator;
-const fs = std.fs;
 const mem = std.mem;
 const oom = @import("util.zig").oom;
 
@@ -379,8 +377,8 @@ const ApplicationWindow = extern struct {
         var puzzle = puzzle_set.puzzles[puzzle_index];
         const image = (win.private().view.getImage(c_allocator, puzzle.colors.values()) catch return) orelse return;
         defer image.deinit(c_allocator);
-        var solutions = ArrayListUnmanaged(pbn.Solution).initCapacity(c_allocator, puzzle.solutions.len) catch oom();
-        defer solutions.deinit(c_allocator);
+        var solutions = std.ArrayList(pbn.Solution).initCapacity(c_allocator, puzzle.solutions.len) catch oom();
+        defer solutions.deinit();
         solutions.appendSliceAssumeCapacity(puzzle.solutions);
         var saved_index: usize = 0;
         while (saved_index < solutions.items.len) : (saved_index += 1) {
@@ -388,7 +386,7 @@ const ApplicationWindow = extern struct {
                 break;
             }
         } else {
-            solutions.append(c_allocator, .{ .type = .saved, .image = undefined, .notes = &.{} }) catch oom();
+            solutions.append(.{ .type = .saved, .image = undefined, .notes = &.{} }) catch oom();
         }
         solutions.items[saved_index].image = image;
         puzzle.solutions = solutions.items;

@@ -8,17 +8,10 @@ const pango = @import("pango");
 const pangocairo = @import("pangocairo");
 const pbn = @import("pbn.zig");
 const util = @import("util.zig");
-const ascii = std.ascii;
-const fmt = std.fmt;
 const mem = std.mem;
 const Allocator = mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
-const ArrayListUnmanaged = std.ArrayListUnmanaged;
-const AutoHashMapUnmanaged = std.AutoHashMapUnmanaged;
-const StringHashMapUnmanaged = std.StringHashMapUnmanaged;
-const math = std.math;
 const oom = util.oom;
-const raw_c_allocator = std.heap.raw_c_allocator;
 
 const Color = struct {
     r: f64,
@@ -45,7 +38,7 @@ const Color = struct {
 
     fn toHex(color: Color) [6]u8 {
         var buf: [6]u8 = undefined;
-        _ = fmt.bufPrint(&buf, "{X:0>2}{X:0>2}{X:0>2}", .{
+        _ = std.fmt.bufPrint(&buf, "{X:0>2}{X:0>2}{X:0>2}", .{
             @as(u8, @intFromFloat(@round(color.r * 255))),
             @as(u8, @intFromFloat(@round(color.g * 255))),
             @as(u8, @intFromFloat(@round(color.b * 255))),
@@ -133,8 +126,8 @@ const State = struct {
             hover_tile.column +|= @intCast(dcolumn);
         }
         state.hover_tile = .{
-            .row = math.clamp(hover_tile.row, state.max_column_hints, state.max_column_hints + state.row_hints.len - 1),
-            .column = math.clamp(hover_tile.column, state.max_row_hints, state.max_row_hints + state.column_hints.len - 1),
+            .row = std.math.clamp(hover_tile.row, state.max_column_hints, state.max_column_hints + state.row_hints.len - 1),
+            .column = std.math.clamp(hover_tile.column, state.max_row_hints, state.max_row_hints + state.column_hints.len - 1),
         };
     }
 
@@ -149,24 +142,24 @@ const State = struct {
     }
 
     fn toImage(state: State, allocator: Allocator, colors: []const pbn.Color) !pbn.Image {
-        var color_chars = StringHashMapUnmanaged(u8){};
+        var color_chars = std.StringHashMap(u8).init(allocator);
         defer {
             var key_iterator = color_chars.keyIterator();
             while (key_iterator.next()) |key| {
                 allocator.free(key.*);
             }
-            color_chars.deinit(allocator);
+            color_chars.deinit();
         }
-        try color_chars.ensureTotalCapacity(allocator, @intCast(colors.len));
+        try color_chars.ensureTotalCapacity(@intCast(colors.len));
         for (colors) |color| {
             if (color.char) |char| {
-                const value = try ascii.allocUpperString(allocator, color.value);
+                const value = try std.ascii.allocUpperString(allocator, color.value);
                 errdefer allocator.free(value);
-                try color_chars.put(allocator, value, char);
+                try color_chars.put(value, char);
             }
         }
 
-        var chars = try ArrayListUnmanaged([]const u8).initCapacity(allocator, state.tiles.len);
+        var chars = try std.ArrayList([]const u8).initCapacity(allocator, state.tiles.len);
         var row_iter = mem.window(Color.Index, state.tiles, state.column_hints.len, state.column_hints.len);
         while (row_iter.next()) |row| {
             for (row) |color_index| {
@@ -182,7 +175,7 @@ const State = struct {
         return .{
             .rows = state.row_hints.len,
             .columns = state.column_hints.len,
-            .chars = try chars.toOwnedSlice(allocator),
+            .chars = try chars.toOwnedSlice(),
         };
     }
 };
@@ -308,7 +301,7 @@ pub const View = extern struct {
         _ = gtk.EventControllerKey.signals.key_released.connect(key, *View, &handleKeyReleased, view, .{});
         gtk.Widget.addController(view.as(gtk.Widget), key.as(gtk.EventController));
 
-        view.private().arena = ArenaAllocator.init(raw_c_allocator);
+        view.private().arena = ArenaAllocator.init(std.heap.raw_c_allocator);
 
         _ = ColorPicker.signals.color_selected.connect(view.private().color_picker, *View, &handleColorSelected, view, .{});
     }
@@ -810,7 +803,7 @@ pub const ColorPicker = extern struct {
         gtk.Widget.setLayoutManager(picker.as(gtk.Widget), gtk.BinLayout.new().as(gtk.LayoutManager));
 
         picker.private().buttons = &.{};
-        picker.private().arena = ArenaAllocator.init(raw_c_allocator);
+        picker.private().arena = ArenaAllocator.init(std.heap.raw_c_allocator);
     }
 
     fn dispose(picker: *ColorPicker) callconv(.C) void {
@@ -828,7 +821,7 @@ pub const ColorPicker = extern struct {
         _ = picker.private().arena.reset(.retain_capacity);
         const allocator = picker.private().arena.allocator();
 
-        var buttons = ArrayListUnmanaged(*ColorButton){};
+        var buttons = std.ArrayList(*ColorButton).init(allocator);
         const none_button = ColorButton.new(
             colors[@intFromEnum(Color.Index.background)],
             colors[@intFromEnum(Color.Index.default)],
@@ -837,7 +830,7 @@ pub const ColorPicker = extern struct {
         );
         gtk.Box.append(picker.private().box, none_button.as(gtk.Widget));
         _ = gtk.ToggleButton.signals.toggled.connect(none_button, *ColorPicker, &handleButtonToggled, picker, .{});
-        buttons.append(allocator, none_button) catch oom();
+        buttons.append(none_button) catch oom();
 
         var last_button: *gtk.ToggleButton = none_button.as(gtk.ToggleButton);
         for (colors, 0.., 1..) |color, index, number| {
@@ -849,10 +842,10 @@ pub const ColorPicker = extern struct {
                 gtk.ToggleButton.setActive(button.as(gtk.ToggleButton), 1);
             }
             _ = gtk.ToggleButton.signals.toggled.connect(button, *ColorPicker, &handleButtonToggled, picker, .{});
-            buttons.append(allocator, button) catch oom();
+            buttons.append(button) catch oom();
         }
 
-        picker.private().buttons = buttons.items;
+        picker.private().buttons = buttons.toOwnedSlice() catch oom();
     }
 
     pub fn activateButton(picker: *ColorPicker, n: usize) void {
