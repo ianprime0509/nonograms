@@ -27,13 +27,16 @@ const Color = struct {
 
     pub const getGObjectType = gobject.ext.defineBoxed(Color, .{});
 
+    pub const Index = enum(c_uint) {
+        background,
+        default,
+        none = std.math.maxInt(c_uint),
+        _,
+    };
+
     const white = Color{ .r = 1, .g = 1, .b = 1 };
     const black = Color{ .r = 0, .g = 0, .b = 0 };
     const red = Color{ .r = 1, .g = 0, .b = 0 };
-
-    fn eql(color: Color, other: Color) bool {
-        return color.r == other.r and color.g == other.g and color.b == other.b;
-    }
 
     fn fromPbn(color: pbn.Color) !Color {
         const rgb = try color.toFloatRgb();
@@ -53,15 +56,13 @@ const Color = struct {
 
 const Hint = struct {
     n: usize,
-    color: Color,
+    color: Color.Index,
 };
 
 const State = struct {
-    tile_colors: []?Color,
-    background_color: Color,
-    default_color: Color,
-    available_colors: []const Color,
-    selected_color: ?Color,
+    colors: []Color,
+    tiles: []Color.Index,
+    selected_color: Color.Index,
     row_hints: [][]Hint,
     max_row_hints: usize,
     column_hints: [][]Hint,
@@ -87,18 +88,19 @@ const State = struct {
         const hints = if (dir == .row) state.row_hints[n] else state.column_hints[n];
         const cross_len = if (dir == .row) state.column_hints.len else state.row_hints.len;
         const cols = state.column_hints.len;
-        var run_color: Color = state.background_color;
+        var run_color: Color.Index = .background;
         var run_len: usize = 0;
         var hint_idx: usize = 0;
         for (0..cross_len) |m| {
             const tile_pos = if (dir == .row) n * cols + m else m * cols + n;
-            const color = state.tile_colors[tile_pos] orelse state.background_color;
-            if (color.eql(run_color)) {
+            var color = state.tiles[tile_pos];
+            if (color == .none) color = .background;
+            if (color == run_color) {
                 run_len += 1;
                 continue;
             }
-            if (!run_color.eql(state.background_color)) {
-                if (hint_idx >= hints.len or !hints[hint_idx].color.eql(run_color) or hints[hint_idx].n != run_len) {
+            if (run_color != .background) {
+                if (hint_idx >= hints.len or hints[hint_idx].color != run_color or hints[hint_idx].n != run_len) {
                     return false;
                 }
                 hint_idx += 1;
@@ -106,8 +108,8 @@ const State = struct {
             run_color = color;
             run_len = 1;
         }
-        if (run_len > 0 and !run_color.eql(state.background_color)) {
-            if (hint_idx >= hints.len or !hints[hint_idx].color.eql(run_color) or hints[hint_idx].n != run_len) {
+        if (run_len > 0 and run_color != .background) {
+            if (hint_idx >= hints.len or hints[hint_idx].color != run_color or hints[hint_idx].n != run_len) {
                 return false;
             }
             hint_idx += 1;
@@ -164,11 +166,12 @@ const State = struct {
             }
         }
 
-        var chars = try ArrayListUnmanaged([]const u8).initCapacity(allocator, state.tile_colors.len);
-        var row_iter = mem.window(?Color, state.tile_colors, state.column_hints.len, state.column_hints.len);
+        var chars = try ArrayListUnmanaged([]const u8).initCapacity(allocator, state.tiles.len);
+        var row_iter = mem.window(Color.Index, state.tiles, state.column_hints.len, state.column_hints.len);
         while (row_iter.next()) |row| {
-            for (row) |maybe_color| {
-                if (maybe_color) |color| {
+            for (row) |color_index| {
+                if (color_index != .none) {
+                    const color = state.colors[@intFromEnum(color_index)];
                     const color_char = color_chars.get(&color.toHex()) orelse return error.UndefinedColor;
                     chars.appendAssumeCapacity(try allocator.dupe(u8, &.{color_char}));
                 } else {
@@ -239,7 +242,7 @@ pub const View = extern struct {
         keyboard_drawing: bool,
         dimensions: ?Dimensions,
         state: ?State,
-        cleared_tile_colors: []?Color,
+        cleared_tiles: []Color.Index,
         arena: ArenaAllocator,
 
         var offset: c_int = 0;
@@ -324,6 +327,20 @@ pub const View = extern struct {
         _ = view.private().arena.reset(.retain_capacity);
         const allocator = view.private().arena.allocator();
 
+        var colors = std.StringArrayHashMap(Color).init(allocator);
+        defer colors.deinit();
+        colors.put(puzzle.background_color, background_color: {
+            const pbn_color = puzzle.colors.get(puzzle.background_color) orelse pbn.Color.white;
+            break :background_color Color.fromPbn(pbn_color) catch Color.white;
+        }) catch oom();
+        colors.put(puzzle.default_color, default_color: {
+            const pbn_color = puzzle.colors.get(puzzle.default_color) orelse pbn.Color.black;
+            break :default_color Color.fromPbn(pbn_color) catch Color.black;
+        }) catch oom();
+        for (puzzle.colors.values()) |color| {
+            colors.put(color.name, Color.fromPbn(color) catch Color.black) catch oom();
+        }
+
         const rows = puzzle.row_clues.lines.len;
         const row_hints = allocator.alloc([]Hint, rows) catch oom();
         var max_row_hints: usize = 0;
@@ -332,8 +349,10 @@ pub const View = extern struct {
             max_row_hints = @max(max_row_hints, line.counts.len);
             for (row.*, line.counts) |*hint, count| {
                 const color_name = count.color orelse puzzle.default_color;
-                const color = puzzle.colors.get(color_name) orelse pbn.Color.black;
-                hint.* = Hint{ .n = count.n, .color = Color.fromPbn(color) catch Color.black };
+                hint.* = .{
+                    .n = count.n,
+                    .color = if (colors.getIndex(color_name)) |index| @enumFromInt(index) else .default,
+                };
             }
         }
         const columns = puzzle.column_clues.lines.len;
@@ -344,27 +363,19 @@ pub const View = extern struct {
             max_column_hints = @max(max_column_hints, line.counts.len);
             for (column.*, line.counts) |*hint, count| {
                 const color_name = count.color orelse puzzle.default_color;
-                const color = puzzle.colors.get(color_name) orelse pbn.Color.black;
-                hint.* = Hint{ .n = count.n, .color = Color.fromPbn(color) catch Color.black };
+                hint.* = .{
+                    .n = count.n,
+                    .color = if (colors.getIndex(color_name)) |index| @enumFromInt(index) else .default,
+                };
             }
         }
-        const background_color = Color.fromPbn(puzzle.colors.get(puzzle.background_color) orelse pbn.Color.white) catch Color.white;
-        const default_color = Color.fromPbn(puzzle.colors.get(puzzle.default_color) orelse pbn.Color.black) catch Color.black;
-        const available_colors = allocator.alloc(Color, puzzle.colors.count()) catch oom();
-        for (available_colors, puzzle.colors.values()) |*available_color, color| {
-            available_color.* = Color.fromPbn(color) catch Color.black;
-        }
-        const tile_colors = allocator.alloc(?Color, rows * columns) catch oom();
-        for (tile_colors) |*color| {
-            color.* = background_color;
-        }
+        const tiles = allocator.alloc(Color.Index, rows * columns) catch oom();
+        @memset(tiles, .background);
 
         var state = State{
-            .tile_colors = tile_colors,
-            .background_color = background_color,
-            .default_color = default_color,
-            .selected_color = default_color,
-            .available_colors = available_colors,
+            .colors = allocator.dupe(Color, colors.values()) catch oom(),
+            .tiles = tiles,
+            .selected_color = .default,
             .row_hints = row_hints,
             .max_row_hints = max_row_hints,
             .column_hints = column_hints,
@@ -382,19 +393,19 @@ pub const View = extern struct {
             // We can't trust that the saved image is actually valid: in
             // particular, it could have completely incorrect dimensions
             if (image.rows == rows and image.columns == columns) {
-                var colors_by_char = AutoHashMapUnmanaged(u8, Color){};
-                defer colors_by_char.deinit(allocator);
+                var colors_by_char = std.AutoHashMap(u8, Color.Index).init(allocator);
+                defer colors_by_char.deinit();
                 for (puzzle.colors.values()) |color| {
                     if (color.char) |char| {
-                        const converted = Color.fromPbn(color) catch continue;
-                        colors_by_char.put(allocator, char, converted) catch oom();
+                        const index: Color.Index = @enumFromInt(colors.getIndex(color.name).?);
+                        colors_by_char.put(char, index) catch oom();
                     }
                 }
 
-                for (image.chars, tile_colors) |options, *color| {
+                for (image.chars, tiles) |options, *color| {
                     switch (options.len) {
-                        0 => color.* = null,
-                        1 => color.* = colors_by_char.get(options[0]) orelse background_color,
+                        0 => color.* = .none,
+                        1 => color.* = colors_by_char.get(options[0]) orelse .background,
                         else => {},
                     }
                 }
@@ -403,25 +414,25 @@ pub const View = extern struct {
         state.solved = state.isSolved();
 
         view.private().state = state;
-        view.private().cleared_tile_colors = allocator.alloc(?Color, tile_colors.len) catch oom();
-        @memset(view.private().cleared_tile_colors, null);
+        view.private().cleared_tiles = allocator.alloc(Color.Index, tiles.len) catch oom();
+        @memset(view.private().cleared_tiles, .none);
         view.private().dimensions = null;
         gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
 
-        view.private().color_picker.load(puzzle);
+        view.private().color_picker.setColors(colors.values());
     }
 
     pub fn clear(view: *View) void {
         const state = &(view.private().state orelse return);
-        @memcpy(view.private().cleared_tile_colors, state.tile_colors);
-        @memset(state.tile_colors, state.background_color);
+        @memcpy(view.private().cleared_tiles, state.tiles);
+        @memset(state.tiles, .background);
         state.solved = false;
         gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
     }
 
     pub fn undoClear(view: *View) void {
         const state = &(view.private().state orelse return);
-        @memcpy(state.tile_colors, view.private().cleared_tile_colors);
+        @memcpy(state.tiles, view.private().cleared_tiles);
         state.solved = state.isSolved();
         // No solved signal is emitted here to prevent repeated completion
         // popups.
@@ -446,7 +457,7 @@ pub const View = extern struct {
 
         drawRules(cr, dims, state);
 
-        for (state.tile_colors, 0..) |color, n| {
+        for (state.tiles, 0..) |color, n| {
             const i = state.max_column_hints + n / state.column_hints.len;
             const j = state.max_row_hints + n % state.column_hints.len;
             const pos = dims.tilePosition(i, j);
@@ -466,20 +477,21 @@ pub const View = extern struct {
         for (state.row_hints, 0..) |row, i| {
             for (row, 0..) |hint, n| {
                 const pos = dims.tilePosition(state.max_column_hints + i, state.max_row_hints - row.len + n);
-                drawHint(cr, layout, hint, pos, dims);
+                drawHint(cr, layout, hint, pos, dims, state);
             }
         }
         for (state.column_hints, 0..) |column, j| {
             for (column, 0..) |hint, n| {
                 const pos = dims.tilePosition(state.max_column_hints - column.len + n, state.max_row_hints + j);
-                drawHint(cr, layout, hint, pos, dims);
+                drawHint(cr, layout, hint, pos, dims, state);
             }
         }
     }
 
-    fn drawHint(cr: *cairo.Context, layout: *pango.Layout, hint: Hint, pos: Point, dims: Dimensions) void {
+    fn drawHint(cr: *cairo.Context, layout: *pango.Layout, hint: Hint, pos: Point, dims: Dimensions, state: State) void {
         var buf: [32]u8 = undefined;
-        cr.setSourceRgb(hint.color.r, hint.color.g, hint.color.b);
+        const color = state.colors[@intFromEnum(hint.color)];
+        cr.setSourceRgb(color.r, color.g, color.b);
         const text = std.fmt.bufPrintZ(&buf, "{}", .{hint.n}) catch unreachable;
         layout.setText(text, -1);
         var w: c_int = undefined;
@@ -493,13 +505,18 @@ pub const View = extern struct {
         pangocairo.showLayout(cr, layout);
     }
 
-    fn drawTile(cr: *cairo.Context, color: ?Color, pos: Point, dims: Dimensions, state: State) void {
-        const c = color orelse state.background_color;
-        cr.setSourceRgb(c.r, c.g, c.b);
+    fn drawTile(cr: *cairo.Context, color: Color.Index, pos: Point, dims: Dimensions, state: State) void {
+        const bg_color = if (color != .none)
+            state.colors[@intFromEnum(color)]
+        else
+            state.colors[@intFromEnum(Color.Index.background)];
+        cr.setSourceRgb(bg_color.r, bg_color.g, bg_color.b);
         cr.rectangle(pos.x, pos.y, dims.tile_size, dims.tile_size);
         cr.fill();
-        if (color == null) {
-            cr.setSourceRgb(state.default_color.r, state.default_color.g, state.default_color.b);
+
+        if (color == .none) {
+            const x_color = state.colors[@intFromEnum(Color.Index.default)];
+            cr.setSourceRgb(x_color.r, x_color.g, x_color.b);
             cr.setLineWidth(Dimensions.gap_frac * dims.tile_size);
             cr.moveTo(pos.x + dims.tile_size * 0.25, pos.y + dims.tile_size * 0.25);
             cr.lineTo(pos.x + dims.tile_size * 0.75, pos.y + dims.tile_size * 0.75);
@@ -595,7 +612,7 @@ pub const View = extern struct {
         const state = view.private().state orelse return;
         const dims = view.private().dimensions orelse return;
         const tile = dims.positionTile(x, y) orelse return;
-        view.setColor(tile.row, tile.column, if (primary) state.selected_color else null);
+        view.setColor(tile.row, tile.column, if (primary) state.selected_color else .none);
     }
 
     fn handleResize(_: *gtk.DrawingArea, width: c_int, height: c_int, view: *View) callconv(.C) void {
@@ -701,18 +718,18 @@ pub const View = extern struct {
         return .{ .tile_size = tile_size, .board_pos = board_pos };
     }
 
-    fn handleColorSelected(_: *ColorPicker, maybe_color: ?*const Color, view: *View) callconv(.C) void {
+    fn handleColorSelected(_: *ColorPicker, color: c_uint, view: *View) callconv(.C) void {
         const state = &(view.private().state orelse return);
-        state.selected_color = if (maybe_color) |color| color.* else null;
+        state.selected_color = @enumFromInt(color);
     }
 
-    fn setColor(view: *View, row: usize, column: usize, color: ?Color) void {
+    fn setColor(view: *View, row: usize, column: usize, color: Color.Index) void {
         const state = &(view.private().state orelse return);
         if (state.solved) {
             return;
         }
         const index = state.tileIndex(row, column) orelse return;
-        state.tile_colors[index] = color;
+        state.tiles[index] = color;
         if (state.isSolved()) {
             state.solved = true;
             signals.solved.impl.emit(view, null, .{}, null);
@@ -758,8 +775,7 @@ pub const ColorPicker = extern struct {
 
     const Private = struct {
         box: *gtk.Box,
-        color: Color,
-        buttons: []const *ColorButton,
+        buttons: []*ColorButton,
         arena: ArenaAllocator,
 
         var offset: c_int = 0;
@@ -777,7 +793,7 @@ pub const ColorPicker = extern struct {
         pub const color_selected = struct {
             pub const name = "color-selected";
             pub const connect = impl.connect;
-            const impl = gobject.ext.defineSignal(name, ColorPicker, &.{?*const Color}, void);
+            const impl = gobject.ext.defineSignal(name, ColorPicker, &.{c_uint}, void);
         };
     };
 
@@ -807,15 +823,16 @@ pub const ColorPicker = extern struct {
         Class.parent.as(gobject.Object.Class).finalize.?(picker.as(gobject.Object));
     }
 
-    pub fn load(picker: *ColorPicker, puzzle: pbn.Puzzle) void {
+    pub fn setColors(picker: *ColorPicker, colors: []const Color) void {
         while (gtk.Widget.getFirstChild(picker.private().box.as(gtk.Widget))) |child| child.unparent();
         _ = picker.private().arena.reset(.retain_capacity);
         const allocator = picker.private().arena.allocator();
 
         var buttons = ArrayListUnmanaged(*ColorButton){};
         const none_button = ColorButton.new(
-            Color.fromPbn(puzzle.colors.get(puzzle.background_color) orelse pbn.Color.white) catch Color.white,
-            Color.fromPbn(puzzle.colors.get(puzzle.default_color) orelse pbn.Color.black) catch Color.black,
+            colors[@intFromEnum(Color.Index.background)],
+            colors[@intFromEnum(Color.Index.default)],
+            .none,
             0,
         );
         gtk.Box.append(picker.private().box, none_button.as(gtk.Widget));
@@ -823,12 +840,12 @@ pub const ColorPicker = extern struct {
         buttons.append(allocator, none_button) catch oom();
 
         var last_button: *gtk.ToggleButton = none_button.as(gtk.ToggleButton);
-        for (puzzle.colors.values(), 1..) |color, number| {
-            const button = ColorButton.new(Color.fromPbn(color) catch Color.black, null, number);
+        for (colors, 0.., 1..) |color, index, number| {
+            const button = ColorButton.new(color, null, @enumFromInt(index), number);
             gtk.ToggleButton.setGroup(button.as(gtk.ToggleButton), last_button);
             picker.private().box.append(button.as(gtk.Widget));
             last_button = button.as(gtk.ToggleButton);
-            if (mem.eql(u8, color.name, puzzle.default_color)) {
+            if (index == @intFromEnum(Color.Index.default)) {
                 gtk.ToggleButton.setActive(button.as(gtk.ToggleButton), 1);
             }
             _ = gtk.ToggleButton.signals.toggled.connect(button, *ColorPicker, &handleButtonToggled, picker, .{});
@@ -850,9 +867,7 @@ pub const ColorPicker = extern struct {
             return;
         }
 
-        signals.color_selected.impl.emit(picker, null, .{
-            if (button.getSelectionColor()) |color| &color else null,
-        }, null);
+        signals.color_selected.impl.emit(picker, null, .{@intCast(@intFromEnum(button.getColorIndex()))}, null);
     }
 
     fn private(picker: *ColorPicker) *Private {
@@ -894,6 +909,11 @@ pub const ColorButton = extern struct {
         drawing_area: *gtk.DrawingArea,
         color: Color,
         x_color: ?Color,
+        // TODO: this should not be stored by the button. It should be stored by
+        // the parent of the button as part of the signal connect data, but that
+        // requires supporting signal data destruction functions.
+        // https://github.com/ianprime0509/zig-gobject/issues/68
+        color_index: Color.Index,
         key_number: usize,
 
         var offset: c_int = 0;
@@ -909,10 +929,11 @@ pub const ColorButton = extern struct {
         .private = .{ .Type = Private, .offset = &Private.offset },
     });
 
-    pub fn new(color: Color, x_color: ?Color, key_number: usize) *ColorButton {
+    pub fn new(color: Color, x_color: ?Color, color_index: Color.Index, key_number: usize) *ColorButton {
         const button = gobject.ext.newInstance(ColorButton, .{});
         button.private().color = color;
         button.private().x_color = x_color;
+        button.private().color_index = color_index;
         button.private().key_number = key_number;
         return button;
     }
@@ -931,8 +952,8 @@ pub const ColorButton = extern struct {
         gobject.Object.virtual_methods.dispose.call(Class.parent.as(gobject.Object.Class), button.as(gobject.Object));
     }
 
-    pub fn getSelectionColor(button: *ColorButton) ?Color {
-        return if (button.private().x_color == null) button.private().color else null;
+    pub fn getColorIndex(button: *ColorButton) Color.Index {
+        return button.private().color_index;
     }
 
     fn draw(_: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, user_data: ?*anyopaque) callconv(.C) void {
