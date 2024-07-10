@@ -159,13 +159,13 @@ const ApplicationWindow = extern struct {
         if (win.private().library) |*library| {
             library.deinit();
         }
-        var library = Library.load() catch {
+        var library = Library.load(c_allocator) catch {
             adw.ToastOverlay.addToast(win.private().toast_overlay, adw.Toast.new(intl.gettext("Failed to read library")));
             return;
         };
         if (library.entries.len == 0) {
-            if (Library.copyDefaultPuzzles()) {
-                library = Library.load() catch {
+            if (Library.copyDefaultPuzzles(c_allocator)) {
+                library = Library.load(c_allocator) catch {
                     adw.ToastOverlay.addToast(win.private().toast_overlay, adw.Toast.new(intl.gettext("Failed to read library")));
                     return;
                 };

@@ -3,13 +3,12 @@ arena: ArenaAllocator,
 
 const std = @import("std");
 const mem = std.mem;
+const Allocator = mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
-const c_allocator = std.heap.c_allocator;
 const glib = @import("glib");
 const default_puzzles = @import("puzzles").default_puzzles;
 const application_id = @import("main.zig").application_id;
 const pbn = @import("pbn.zig");
-const oom = @import("util.zig").oom;
 
 const Library = @This();
 
@@ -22,13 +21,13 @@ pub fn deinit(library: *Library) void {
     library.arena.deinit();
 }
 
-pub fn load() !Library {
-    const library_path = libraryPathAlloc();
-    defer c_allocator.free(library_path);
+pub fn load(parent_allocator: Allocator) !Library {
+    const library_path = try libraryPathAlloc(parent_allocator);
+    defer parent_allocator.free(library_path);
     var library_dir = try std.fs.cwd().makeOpenPath(library_path, .{ .iterate = true });
     defer library_dir.close();
 
-    var arena = ArenaAllocator.init(c_allocator);
+    var arena = ArenaAllocator.init(parent_allocator);
     errdefer arena.deinit();
     const allocator = arena.allocator();
 
@@ -45,17 +44,17 @@ pub fn load() !Library {
         var puzzle_set = pbn.PuzzleSet.parseReader(allocator, child_buf_reader.reader()) catch continue;
         defer puzzle_set.deinit();
         try entries.append(.{
-            .path = std.fs.path.joinZ(allocator, &.{ library_path, child.name }) catch oom(),
-            .title = if (puzzle_set.title) |title| allocator.dupeZ(u8, title) catch oom() else null,
+            .path = try std.fs.path.joinZ(allocator, &.{ library_path, child.name }),
+            .title = if (puzzle_set.title) |title| try allocator.dupeZ(u8, title) else null,
         });
     }
 
-    return .{ .entries = entries.toOwnedSlice() catch oom(), .arena = arena };
+    return .{ .entries = try entries.toOwnedSlice(), .arena = arena };
 }
 
-pub fn copyDefaultPuzzles() !void {
-    const library_path = libraryPathAlloc();
-    defer c_allocator.free(library_path);
+pub fn copyDefaultPuzzles(allocator: Allocator) !void {
+    const library_path = try libraryPathAlloc(allocator);
+    defer allocator.free(library_path);
     var library_dir = try std.fs.cwd().makeOpenPath(library_path, .{});
     defer library_dir.close();
 
@@ -64,6 +63,6 @@ pub fn copyDefaultPuzzles() !void {
     }
 }
 
-fn libraryPathAlloc() []u8 {
-    return std.fs.path.join(c_allocator, &.{ mem.span(glib.getUserDataDir()), application_id }) catch oom();
+fn libraryPathAlloc(allocator: Allocator) ![]u8 {
+    return std.fs.path.join(allocator, &.{ mem.span(glib.getUserDataDir()), application_id });
 }
