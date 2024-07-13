@@ -825,23 +825,34 @@ pub const ColorPicker = extern struct {
         const none_button = ColorButton.new(
             colors[@intFromEnum(Color.Index.background)],
             colors[@intFromEnum(Color.Index.default)],
-            .none,
             0,
         );
         gtk.Box.append(picker.private().box, none_button.as(gtk.Widget));
-        _ = gtk.ToggleButton.signals.toggled.connect(none_button, *ColorPicker, &handleButtonToggled, picker, .{});
+        _ = gtk.ToggleButton.signals.toggled.connect(
+            none_button,
+            *ButtonToggleData,
+            &handleButtonToggled,
+            ButtonToggleData.new(picker, .none),
+            .{ .destroyData = ButtonToggleData.destroy },
+        );
         buttons.append(none_button) catch oom();
 
         var last_button: *gtk.ToggleButton = none_button.as(gtk.ToggleButton);
         for (colors, 0.., 1..) |color, index, number| {
-            const button = ColorButton.new(color, null, @enumFromInt(index), number);
+            const button = ColorButton.new(color, null, number);
             gtk.ToggleButton.setGroup(button.as(gtk.ToggleButton), last_button);
             picker.private().box.append(button.as(gtk.Widget));
             last_button = button.as(gtk.ToggleButton);
             if (index == @intFromEnum(Color.Index.default)) {
                 gtk.ToggleButton.setActive(button.as(gtk.ToggleButton), 1);
             }
-            _ = gtk.ToggleButton.signals.toggled.connect(button, *ColorPicker, &handleButtonToggled, picker, .{});
+            _ = gtk.ToggleButton.signals.toggled.connect(
+                button,
+                *ButtonToggleData,
+                &handleButtonToggled,
+                ButtonToggleData.new(picker, @enumFromInt(index)),
+                .{ .destroyData = ButtonToggleData.destroy },
+            );
             buttons.append(button) catch oom();
         }
 
@@ -855,12 +866,28 @@ pub const ColorPicker = extern struct {
         }
     }
 
-    fn handleButtonToggled(button: *ColorButton, picker: *ColorPicker) callconv(.C) void {
+    const ButtonToggleData = struct {
+        picker: *ColorPicker,
+        color: Color.Index,
+
+        fn new(picker: *ColorPicker, color: Color.Index) *ButtonToggleData {
+            return glib.ext.new(ButtonToggleData, .{
+                .picker = picker,
+                .color = color,
+            });
+        }
+
+        fn destroy(data: *ButtonToggleData) callconv(.C) void {
+            glib.ext.destroy(data);
+        }
+    };
+
+    fn handleButtonToggled(button: *ColorButton, data: *ButtonToggleData) callconv(.C) void {
         if (gtk.ToggleButton.getActive(button.as(gtk.ToggleButton)) == 0) {
             return;
         }
 
-        signals.color_selected.impl.emit(picker, null, .{@intCast(@intFromEnum(button.getColorIndex()))}, null);
+        signals.color_selected.impl.emit(data.picker, null, .{@intCast(@intFromEnum(data.color))}, null);
     }
 
     fn private(picker: *ColorPicker) *Private {
@@ -902,11 +929,6 @@ pub const ColorButton = extern struct {
         drawing_area: *gtk.DrawingArea,
         color: Color,
         x_color: ?Color,
-        // TODO: this should not be stored by the button. It should be stored by
-        // the parent of the button as part of the signal connect data, but that
-        // requires supporting signal data destruction functions.
-        // https://github.com/ianprime0509/zig-gobject/issues/68
-        color_index: Color.Index,
         key_number: usize,
 
         var offset: c_int = 0;
@@ -922,11 +944,10 @@ pub const ColorButton = extern struct {
         .private = .{ .Type = Private, .offset = &Private.offset },
     });
 
-    pub fn new(color: Color, x_color: ?Color, color_index: Color.Index, key_number: usize) *ColorButton {
+    pub fn new(color: Color, x_color: ?Color, key_number: usize) *ColorButton {
         const button = gobject.ext.newInstance(ColorButton, .{});
         button.private().color = color;
         button.private().x_color = x_color;
-        button.private().color_index = color_index;
         button.private().key_number = key_number;
         return button;
     }
@@ -943,10 +964,6 @@ pub const ColorButton = extern struct {
     fn dispose(button: *ColorButton) callconv(.C) void {
         gtk.Widget.disposeTemplate(button.as(gtk.Widget), getGObjectType());
         gobject.Object.virtual_methods.dispose.call(Class.parent.as(gobject.Object.Class), button.as(gobject.Object));
-    }
-
-    pub fn getColorIndex(button: *ColorButton) Color.Index {
-        return button.private().color_index;
     }
 
     fn draw(_: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, user_data: ?*anyopaque) callconv(.C) void {
