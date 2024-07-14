@@ -4,6 +4,109 @@
   <author>Ian Johnson</author>
   <copyright>Public domain (CC-0)</copyright>
   <puzzle defaultcolor="black" backgroundcolor="white">
+    <title>A place I like to be</title>
+    <description>Home sweet home</description>
+    <color name="black" char="X">000000</color>
+    <color name="white" char=".">FFFFFF</color>
+    <clues type="rows">
+      <line>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">6</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">10</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="black">1</count>
+        <count color="black">1</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="black">1</count>
+      </line>
+    </clues>
+    <clues type="columns">
+      <line>
+        <count color="black">2</count>
+      </line>
+      <line>
+        <count color="black">2</count>
+        <count color="black">5</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">2</count>
+        <count color="black">1</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="black">1</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">1</count>
+        <count color="black">1</count>
+      </line>
+      <line>
+        <count color="black">2</count>
+        <count color="black">5</count>
+      </line>
+      <line>
+        <count color="black">2</count>
+      </line>
+    </clues>
+    <solution type="goal">
+      <image>
+        |...X......|
+        |..XXXXXX..|
+        |.X......X.|
+        |.X......X.|
+        |X........X|
+        |XXXXXXXXXX|
+        |.X......X.|
+        |.X.X..X.X.|
+        |.X......X.|
+        |.X......X.|
+      </image>
+    </solution>
+  </puzzle>
+  <puzzle defaultcolor="black" backgroundcolor="white">
     <title>In a cheerful mood</title>
     <description>Be happy!</description>
     <color name="black" char="X">000000</color>
