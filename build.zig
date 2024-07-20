@@ -8,6 +8,7 @@ pub fn build(b: *std.Build) !void {
     const gobject = b.dependency("gobject", .{});
     const xml = b.dependency("xml", .{}).module("xml");
 
+    const data_dir: std.Build.InstallDir = .{ .custom = "share" };
     const locale_dir: std.Build.InstallDir = .{ .custom = "share/locale" };
     const build_options = b.addOptions();
     build_options.addOption([]const u8, "locale_dir", b.getInstallPath(locale_dir, ""));
@@ -32,15 +33,22 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("adw", gobject.module("adw1"));
     exe.root_module.addImport("libintl", b.dependency("libintl", .{}).module("libintl"));
     exe.root_module.addAnonymousImport("puzzles", .{ .root_source_file = b.path("puzzles/puzzles.zig") });
-    const gresources = gobject_build.addCompileResources(b, target, b.path("data/gresources.xml"));
+    const gresources = gobject_build.addCompileResources(b, target, b.path("data/resources/gresources.xml"));
     exe.root_module.addImport("gresources", gresources);
     b.installArtifact(exe);
+
+    b.installDirectory(.{
+        .source_dir = b.path("data/icons"),
+        .install_dir = data_dir,
+        .install_subdir = "icons",
+    });
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
+    run_cmd.setEnvironmentVariable("XDG_DATA_HOME", b.getInstallPath(data_dir, "."));
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
