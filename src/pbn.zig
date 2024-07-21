@@ -3,12 +3,12 @@
 
 const std = @import("std");
 const xml = @import("xml");
+const libxml2 = @import("libxml2");
 const mem = std.mem;
 const Allocator = mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 
 pub const Error = error{InvalidPbn} || Allocator.Error;
-pub const WriteError = std.fs.File.OpenError || std.fs.File.SyncError || std.fs.File.WriteError;
 
 pub const PuzzleSet = struct {
     puzzles: []const Puzzle,
@@ -52,14 +52,10 @@ pub const PuzzleSet = struct {
         };
     }
 
-    pub fn writeFile(set: PuzzleSet, path: [:0]const u8) WriteError!void {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
-        var buffered_writer = std.io.bufferedWriter(file.writer());
-        var writer = xml.writer(buffered_writer.writer());
-        try set.writeDoc(&writer);
-        try buffered_writer.flush();
-        try file.sync();
+    pub fn writeFile(set: PuzzleSet, path: [:0]const u8) error{XmlError}!void {
+        const writer = try libxml2.Writer.newForPath(path);
+        defer writer.free();
+        try set.writeDoc(writer);
     }
 
     pub fn deinit(set: *PuzzleSet) void {
@@ -133,34 +129,36 @@ pub const PuzzleSet = struct {
         };
     }
 
-    fn writeDoc(set: PuzzleSet, writer: anytype) !void {
-        try writer.writeXmlDeclaration("1.0", "UTF-8", true);
-        try writer.writeElementStart(.{ .local = "puzzleset" });
+    fn writeDoc(set: PuzzleSet, writer: *libxml2.Writer) !void {
+        try writer.setIndent(2);
+        try writer.startDocument(null, "UTF-8", null);
+        try writer.startElement("puzzleset");
         if (set.source) |source| {
-            try writeTextElement(writer, "source", source);
+            try writer.writeElement("source", source);
         }
         if (set.id) |id| {
-            try writeTextElement(writer, "id", id);
+            try writer.writeElement("id", id);
         }
         if (set.title) |title| {
-            try writeTextElement(writer, "title", title);
+            try writer.writeElement("title", title);
         }
         if (set.author) |author| {
-            try writeTextElement(writer, "author", author);
+            try writer.writeElement("author", author);
         }
         if (set.author_id) |author_id| {
-            try writeTextElement(writer, "authorid", author_id);
+            try writer.writeElement("authorid", author_id);
         }
         if (set.copyright) |copyright| {
-            try writeTextElement(writer, "copyright", copyright);
+            try writer.writeElement("copyright", copyright);
         }
         for (set.puzzles) |puzzle| {
             try puzzle.write(writer);
         }
         for (set.notes) |note| {
-            try writeTextElement(writer, "note", note);
+            try writer.writeElement("note", note);
         }
-        try writer.writeElementEnd(.{ .local = "puzzleset" });
+        try writer.endElement();
+        try writer.endDocument();
     }
 };
 
@@ -278,30 +276,30 @@ pub const Puzzle = struct {
         };
     }
 
-    fn write(puzzle: Puzzle, writer: anytype) !void {
-        try writer.writeElementStart(.{ .local = "puzzle" });
-        try writer.writeAttribute(.{ .local = "defaultcolor" }, puzzle.default_color);
-        try writer.writeAttribute(.{ .local = "backgroundcolor" }, puzzle.background_color);
+    fn write(puzzle: Puzzle, writer: *libxml2.Writer) !void {
+        try writer.startElement("puzzle");
+        try writer.writeAttribute("defaultcolor", puzzle.default_color);
+        try writer.writeAttribute("backgroundcolor", puzzle.background_color);
         if (puzzle.source) |source| {
-            try writeTextElement(writer, "source", source);
+            try writer.writeElement("source", source);
         }
         if (puzzle.id) |id| {
-            try writeTextElement(writer, "id", id);
+            try writer.writeElement("id", id);
         }
         if (puzzle.title) |title| {
-            try writeTextElement(writer, "title", title);
+            try writer.writeElement("title", title);
         }
         if (puzzle.author) |author| {
-            try writeTextElement(writer, "author", author);
+            try writer.writeElement("author", author);
         }
         if (puzzle.author_id) |author_id| {
-            try writeTextElement(writer, "authorid", author_id);
+            try writer.writeElement("authorid", author_id);
         }
         if (puzzle.copyright) |copyright| {
-            try writeTextElement(writer, "copyright", copyright);
+            try writer.writeElement("copyright", copyright);
         }
         if (puzzle.description) |description| {
-            try writeTextElement(writer, "description", description);
+            try writer.writeElement("description", description);
         }
         for (puzzle.colors.values()) |color| {
             try color.write(writer);
@@ -312,9 +310,9 @@ pub const Puzzle = struct {
             try solution.write(writer);
         }
         for (puzzle.notes) |note| {
-            try writeTextElement(writer, "note", note);
+            try writer.writeElement("note", note);
         }
-        try writer.writeElementEnd(.{ .local = "puzzle" });
+        try writer.endElement();
     }
 };
 
@@ -377,14 +375,14 @@ pub const Color = struct {
         };
     }
 
-    fn write(color: Color, writer: anytype) !void {
-        try writer.writeElementStart(.{ .local = "color" });
-        try writer.writeAttribute(.{ .local = "name" }, color.name);
+    fn write(color: Color, writer: *libxml2.Writer) !void {
+        try writer.startElement("color");
+        try writer.writeAttribute("name", color.name);
         if (color.char) |char| {
-            try writer.writeAttribute(.{ .local = "char" }, &[_]u8{char});
+            try writer.writeAttribute("char", &[_]u8{char} ++ "");
         }
-        try writer.writeElementContent(color.value);
-        try writer.writeElementEnd(.{ .local = "color" });
+        try writer.write(color.value);
+        try writer.endElement();
     }
 };
 
@@ -421,13 +419,13 @@ pub const Clues = struct {
         };
     }
 
-    fn write(clues: Clues, writer: anytype) !void {
-        try writer.writeElementStart(.{ .local = "clues" });
-        try writer.writeAttribute(.{ .local = "type" }, @tagName(clues.type));
+    fn write(clues: Clues, writer: *libxml2.Writer) !void {
+        try writer.startElement("clues");
+        try writer.writeAttribute("type", @tagName(clues.type));
         for (clues.lines) |line| {
             try line.write(writer);
         }
-        try writer.writeElementEnd(.{ .local = "clues" });
+        try writer.endElement();
     }
 };
 
@@ -454,11 +452,11 @@ pub const Line = struct {
     }
 
     fn write(line: Line, writer: anytype) !void {
-        try writer.writeElementStart(.{ .local = "line" });
+        try writer.startElement("line");
         for (line.counts) |count| {
             try count.write(writer);
         }
-        try writer.writeElementEnd(.{ .local = "line" });
+        try writer.endElement();
     }
 };
 
@@ -487,14 +485,14 @@ pub const Count = struct {
         };
     }
 
-    fn write(count: Count, writer: anytype) !void {
-        try writer.writeElementStart(.{ .local = "count" });
+    fn write(count: Count, writer: *libxml2.Writer) !void {
+        try writer.startElement("count");
         if (count.color) |color| {
-            try writer.writeAttribute(.{ .local = "color" }, color);
+            try writer.writeAttribute("color", color);
         }
         var buf: [32]u8 = undefined;
-        try writer.writeElementContent(std.fmt.bufPrint(&buf, "{}", .{count.n}) catch unreachable);
-        try writer.writeElementEnd(.{ .local = "count" });
+        try writer.write(std.fmt.bufPrintZ(&buf, "{}", .{count.n}) catch unreachable);
+        try writer.endElement();
     }
 };
 
@@ -536,21 +534,21 @@ pub const Solution = struct {
         };
     }
 
-    fn write(solution: Solution, writer: anytype) !void {
-        try writer.writeElementStart(.{ .local = "solution" });
-        try writer.writeAttribute(.{ .local = "type" }, @tagName(solution.type));
+    fn write(solution: Solution, writer: *libxml2.Writer) !void {
+        try writer.startElement("solution");
+        try writer.writeAttribute("type", @tagName(solution.type));
         try solution.image.write(writer);
         for (solution.notes) |note| {
-            try writeTextElement(writer, "note", note);
+            try writer.writeElement("note", note);
         }
-        try writer.writeElementEnd(.{ .local = "solution" });
+        try writer.endElement();
     }
 };
 
 pub const Image = struct {
     rows: usize,
     columns: usize,
-    chars: []const []const u8,
+    chars: []const [:0]const u8,
 
     pub fn deinit(image: Image, allocator: Allocator) void {
         for (image.chars) |options| {
@@ -560,7 +558,7 @@ pub const Image = struct {
     }
 
     pub fn fromText(allocator: Allocator, text: []const u8) Error!Image {
-        var chars = std.ArrayList([]const u8).init(allocator);
+        var chars = std.ArrayList([:0]const u8).init(allocator);
         errdefer {
             for (chars.items) |options| {
                 allocator.free(options);
@@ -699,31 +697,26 @@ pub const Image = struct {
         return try fromText(allocator, text);
     }
 
-    fn write(image: Image, writer: anytype) !void {
-        try writer.writeElementStart(.{ .local = "image" });
-        var row_iter = mem.window([]const u8, image.chars, image.columns, image.columns);
+    fn write(image: Image, writer: *libxml2.Writer) !void {
+        try writer.startElement("image");
+        try writer.write("\n");
+        var row_iter = mem.window([:0]const u8, image.chars, image.columns, image.columns);
         while (row_iter.next()) |row| {
-            try writer.writeElementContent("|");
+            try writer.write("|");
             for (row) |options| {
                 if (options.len == 1) {
-                    try writer.writeElementContent(&[_]u8{options[0]});
+                    try writer.write(&[_]u8{options[0]} ++ "");
                 } else {
-                    try writer.writeElementContent("[");
-                    try writer.writeElementContent(options);
-                    try writer.writeElementContent("]");
+                    try writer.write("[");
+                    try writer.write(options);
+                    try writer.write("]");
                 }
             }
-            try writer.writeElementContent("|\n");
+            try writer.write("|\n");
         }
-        try writer.writeElementEnd(.{ .local = "image" });
+        try writer.endElement();
     }
 };
-
-fn writeTextElement(writer: anytype, name: []const u8, value: []const u8) !void {
-    try writer.writeElementStart(.{ .local = name });
-    try writer.writeElementContent(value);
-    try writer.writeElementEnd(.{ .local = name });
-}
 
 fn textContent(allocator: Allocator, children: anytype) ![:0]u8 {
     var text = std.ArrayList(u8).init(allocator);

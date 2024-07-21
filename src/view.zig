@@ -159,16 +159,16 @@ const State = struct {
             }
         }
 
-        var chars = try std.ArrayList([]const u8).initCapacity(allocator, state.tiles.len);
+        var chars = try std.ArrayList([:0]const u8).initCapacity(allocator, state.tiles.len);
         var row_iter = mem.window(Color.Index, state.tiles, state.column_hints.len, state.column_hints.len);
         while (row_iter.next()) |row| {
             for (row) |color_index| {
                 if (color_index != .none) {
                     const color = state.colors[@intFromEnum(color_index)];
                     const color_char = color_chars.get(&color.toHex()) orelse return error.UndefinedColor;
-                    chars.appendAssumeCapacity(try allocator.dupe(u8, &.{color_char}));
+                    chars.appendAssumeCapacity(try allocator.dupeZ(u8, &.{color_char}));
                 } else {
-                    chars.appendAssumeCapacity(try allocator.dupe(u8, ""));
+                    chars.appendAssumeCapacity(try allocator.dupeZ(u8, ""));
                 }
             }
         }

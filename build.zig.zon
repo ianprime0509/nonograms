@@ -24,5 +24,8 @@
             .url = "git+https://github.com/ianprime0509/zig-libintl?ref=main#0c436aa63c31bb8ad5d7d59800638f784e1e04a5",
             .hash = "1220e1f1576da3188a8749940f836cfb4f858ee3455660b05c67984ddc29cf63956e",
         },
+        .libxml2 = .{
+            .path = "../zig-libxml2",
+        },
     },
 }
