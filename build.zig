@@ -7,10 +7,6 @@ pub fn build(b: *std.Build) !void {
 
     const gobject = b.dependency("gobject", .{});
     const xml = b.dependency("xml", .{}).module("xml");
-    const libxml2 = b.dependency("libxml2", .{
-        .target = target,
-        .optimize = optimize,
-    });
 
     const data_dir: std.Build.InstallDir = .{ .custom = "share" };
     const locale_dir: std.Build.InstallDir = .{ .custom = "share/locale" };
@@ -25,7 +21,6 @@ pub fn build(b: *std.Build) !void {
     });
     exe.linkLibC();
     exe.root_module.addOptions("build_options", build_options);
-    exe.root_module.addImport("libxml2", libxml2.module("xml"));
     exe.root_module.addImport("xml", xml);
     exe.root_module.addImport("glib", gobject.module("glib2"));
     exe.root_module.addImport("gobject", gobject.module("gobject2"));
