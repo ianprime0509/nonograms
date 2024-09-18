@@ -14,8 +14,8 @@
     },
     .dependencies = .{
         .xml = .{
-            .url = "git+https://github.com/ianprime0509/zig-xml?ref=main#0747fa10b28ade9a8516bc5b122dcad997bd8fa7",
-            .hash = "1220fcb9b8da8bcfdaa18c81678c6b5cf41d63a2bf9fde7551b4390279cc473a2520",
+            .url = "git+https://github.com/ianprime0509/zig-xml?ref=main#ee8e09bccf73fa2b494e7e4a706a5ca5523f8eac",
+            .hash = "1220a895bbaf36f886864af03b799ce4bcc02592a0d40953b569983bfe5a98b2a65b",
         },
         .gobject = .{
             .url = "https://github.com/ianprime0509/zig-gobject/releases/download/v0.2.1/bindings-gnome46.tar.zst",

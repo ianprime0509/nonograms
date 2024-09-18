@@ -22,41 +22,22 @@ pub const PuzzleSet = struct {
     arena: ArenaAllocator,
 
     pub fn parseBytes(allocator: Allocator, bytes: []const u8) Error!PuzzleSet {
-        var stream = std.io.fixedBufferStream(bytes);
-        return try parseReader(allocator, stream.reader());
+        var doc = xml.StaticDocument.init(bytes);
+        return parseDoc(allocator, &doc);
     }
 
     pub fn parseReader(allocator: Allocator, data_reader: anytype) (Error || @TypeOf(data_reader).Error)!PuzzleSet {
-        var reader = xml.reader(allocator, data_reader, .{
-            .DecoderType = xml.encoding.Utf8Decoder,
-            // Normalization doesn't matter for anything we're doing
-            .enable_normalization = false,
-            // The PBN format does not use namespaces
-            .namespace_aware = false,
-        });
-        defer reader.deinit();
-        return parseXml(allocator, &reader) catch |err| switch (err) {
-            error.DoctypeNotSupported,
-            error.DuplicateAttribute,
-            error.InvalidCharacterReference,
-            error.InvalidEncoding,
-            error.InvalidPiTarget,
-            error.InvalidUtf8,
-            error.MismatchedEndTag,
-            error.Overflow,
-            error.SyntaxError,
-            error.UndeclaredEntityReference,
-            error.UnexpectedEndOfInput,
-            => return error.InvalidPbn,
-            else => |other| return other,
-        };
+        var doc = xml.streamingDocument(allocator, data_reader);
+        defer doc.deinit();
+        return parseDoc(allocator, &doc);
     }
 
     pub fn writeFile(set: PuzzleSet, path: [:0]const u8) WriteError!void {
         const file = try std.fs.cwd().createFile(path, .{});
         defer file.close();
         var buffered_writer = std.io.bufferedWriter(file.writer());
-        var writer = xml.writer(buffered_writer.writer());
+        var out = xml.streamingOutput(buffered_writer.writer());
+        var writer = out.writer(.{ .indent = "  " });
         try set.writeDoc(&writer);
         try buffered_writer.flush();
         try file.sync();
@@ -66,22 +47,28 @@ pub const PuzzleSet = struct {
         set.arena.deinit();
     }
 
-    fn parseXml(allocator: Allocator, reader: anytype) !PuzzleSet {
-        var puzzle_set: ?PuzzleSet = null;
-        while (try reader.next()) |event| {
-            switch (event) {
-                .element_start => |e| if (e.name.is(null, "puzzleset")) {
-                    puzzle_set = try parseInternal(allocator, reader.children());
-                } else {
-                    try reader.children().skip();
-                },
-                else => {},
-            }
-        }
-        return puzzle_set orelse error.InvalidPbn;
+    fn parseDoc(allocator: Allocator, doc: anytype) !PuzzleSet {
+        var reader = doc.reader(allocator, .{
+            // The PBN format does not use namespaces
+            .namespace_aware = false,
+        });
+        defer reader.deinit();
+        return parseXml(allocator, &reader) catch |err| switch (err) {
+            error.MalformedXml => return error.InvalidPbn,
+            else => |other| return other,
+        };
     }
 
-    fn parseInternal(a: Allocator, children: anytype) !PuzzleSet {
+    fn parseXml(allocator: Allocator, reader: anytype) !PuzzleSet {
+        try reader.skipProlog();
+        if (!mem.eql(u8, reader.elementName(), "puzzleset")) return error.InvalidPbn;
+        var repository = try parseInternal(allocator, reader);
+        errdefer repository.deinit();
+        try reader.skipDocument();
+        return repository;
+    }
+
+    fn parseInternal(a: Allocator, reader: anytype) !PuzzleSet {
         var arena = ArenaAllocator.init(a);
         errdefer arena.deinit();
         const allocator = arena.allocator();
@@ -95,27 +82,31 @@ pub const PuzzleSet = struct {
         var puzzles = std.ArrayList(Puzzle).init(allocator);
         var notes = std.ArrayList([:0]const u8).init(allocator);
 
-        while (try children.next()) |event| {
-            switch (event) {
-                .element_start => |child| if (child.name.is(null, "source")) {
-                    source = try textContent(allocator, children.children());
-                } else if (child.name.is(null, "id")) {
-                    id = try textContent(allocator, children.children());
-                } else if (child.name.is(null, "title")) {
-                    title = try textContent(allocator, children.children());
-                } else if (child.name.is(null, "author")) {
-                    author = try textContent(allocator, children.children());
-                } else if (child.name.is(null, "authorid")) {
-                    author_id = try textContent(allocator, children.children());
-                } else if (child.name.is(null, "copyright")) {
-                    copyright = try textContent(allocator, children.children());
-                } else if (child.name.is(null, "puzzle")) {
-                    try puzzles.append(try Puzzle.parse(allocator, child, children.children()));
-                } else if (child.name.is(null, "note")) {
-                    try notes.append(try textContent(allocator, children.children()));
-                } else {
-                    try children.children().skip();
+        while (true) {
+            switch (try reader.read()) {
+                .element_start => {
+                    const child = reader.elementName();
+                    if (mem.eql(u8, child, "source")) {
+                        source = try readElementTextAllocZ(allocator, reader);
+                    } else if (mem.eql(u8, child, "id")) {
+                        id = try readElementTextAllocZ(allocator, reader);
+                    } else if (mem.eql(u8, child, "title")) {
+                        title = try readElementTextAllocZ(allocator, reader);
+                    } else if (mem.eql(u8, child, "author")) {
+                        author = try readElementTextAllocZ(allocator, reader);
+                    } else if (mem.eql(u8, child, "authorid")) {
+                        author_id = try readElementTextAllocZ(allocator, reader);
+                    } else if (mem.eql(u8, child, "copyright")) {
+                        copyright = try readElementTextAllocZ(allocator, reader);
+                    } else if (mem.eql(u8, child, "puzzle")) {
+                        try puzzles.append(try Puzzle.parse(allocator, reader));
+                    } else if (mem.eql(u8, child, "note")) {
+                        try notes.append(try readElementTextAllocZ(allocator, reader));
+                    } else {
+                        try reader.skipElement();
+                    }
                 },
+                .element_end => break,
                 else => {},
             }
         }
@@ -134,8 +125,8 @@ pub const PuzzleSet = struct {
     }
 
     fn writeDoc(set: PuzzleSet, writer: anytype) !void {
-        try writer.writeXmlDeclaration("1.0", "UTF-8", true);
-        try writer.writeElementStart(.{ .local = "puzzleset" });
+        try writer.xmlDeclaration("UTF-8", true);
+        try writer.elementStart("puzzleset");
         if (set.source) |source| {
             try writeTextElement(writer, "source", source);
         }
@@ -160,7 +151,7 @@ pub const PuzzleSet = struct {
         for (set.notes) |note| {
             try writeTextElement(writer, "note", note);
         }
-        try writer.writeElementEnd(.{ .local = "puzzleset" });
+        try writer.elementEnd("puzzleset");
     }
 };
 
@@ -180,7 +171,7 @@ pub const Puzzle = struct {
     solutions: []const Solution,
     notes: []const [:0]const u8,
 
-    fn parse(allocator: Allocator, start: xml.Event.ElementStart, children: anytype) !Puzzle {
+    fn parse(allocator: Allocator, reader: anytype) !Puzzle {
         var source: ?[:0]const u8 = null;
         var id: ?[:0]const u8 = null;
         var title: ?[:0]const u8 = null;
@@ -189,8 +180,14 @@ pub const Puzzle = struct {
         var copyright: ?[:0]const u8 = null;
         var description: ?[:0]const u8 = null;
         var colors = std.StringArrayHashMap(Color).init(allocator);
-        var default_color: ?[:0]const u8 = null;
-        var background_color: ?[:0]const u8 = null;
+        const default_color = default_color: {
+            const index = reader.attributeIndex("defaultcolor") orelse break :default_color "black";
+            break :default_color try attributeValueAllocZ(allocator, reader, index);
+        };
+        const background_color = background_color: {
+            const index = reader.attributeIndex("backgroundcolor") orelse break :background_color "white";
+            break :background_color try attributeValueAllocZ(allocator, reader, index);
+        };
         var row_clues: ?Clues = null;
         var column_clues: ?Clues = null;
         var solutions = std.ArrayList(Solution).init(allocator);
@@ -200,46 +197,42 @@ pub const Puzzle = struct {
         try colors.put("black", Color.black);
         try colors.put("white", Color.white);
 
-        for (start.attributes) |attr| {
-            if (attr.name.is(null, "defaultcolor")) {
-                default_color = try allocator.dupeZ(u8, attr.value);
-            } else if (attr.name.is(null, "backgroundcolor")) {
-                background_color = try allocator.dupeZ(u8, attr.value);
-            }
-        }
-
-        while (try children.next()) |event| {
-            switch (event) {
-                .element_start => |child| if (child.name.is(null, "source")) {
-                    source = try textContent(allocator, children.children());
-                } else if (child.name.is(null, "id")) {
-                    id = try textContent(allocator, children.children());
-                } else if (child.name.is(null, "title")) {
-                    title = try textContent(allocator, children.children());
-                } else if (child.name.is(null, "author")) {
-                    author = try textContent(allocator, children.children());
-                } else if (child.name.is(null, "authorid")) {
-                    author_id = try textContent(allocator, children.children());
-                } else if (child.name.is(null, "copyright")) {
-                    copyright = try textContent(allocator, children.children());
-                } else if (child.name.is(null, "description")) {
-                    description = try textContent(allocator, children.children());
-                } else if (child.name.is(null, "color")) {
-                    const color = try Color.parse(allocator, child, children.children());
-                    try colors.put(color.name, color);
-                } else if (child.name.is(null, "clues")) {
-                    const clues = try Clues.parse(allocator, child, children.children());
-                    switch (clues.type) {
-                        .rows => row_clues = clues,
-                        .columns => column_clues = clues,
+        while (true) {
+            switch (try reader.read()) {
+                .element_start => {
+                    const child = reader.elementName();
+                    if (mem.eql(u8, child, "source")) {
+                        source = try readElementTextAllocZ(allocator, reader);
+                    } else if (mem.eql(u8, child, "id")) {
+                        id = try readElementTextAllocZ(allocator, reader);
+                    } else if (mem.eql(u8, child, "title")) {
+                        title = try readElementTextAllocZ(allocator, reader);
+                    } else if (mem.eql(u8, child, "author")) {
+                        author = try readElementTextAllocZ(allocator, reader);
+                    } else if (mem.eql(u8, child, "authorid")) {
+                        author_id = try readElementTextAllocZ(allocator, reader);
+                    } else if (mem.eql(u8, child, "copyright")) {
+                        copyright = try readElementTextAllocZ(allocator, reader);
+                    } else if (mem.eql(u8, child, "description")) {
+                        description = try readElementTextAllocZ(allocator, reader);
+                    } else if (mem.eql(u8, child, "color")) {
+                        const color = try Color.parse(allocator, reader);
+                        try colors.put(color.name, color);
+                    } else if (mem.eql(u8, child, "clues")) {
+                        const clues = try Clues.parse(allocator, reader);
+                        switch (clues.type) {
+                            .rows => row_clues = clues,
+                            .columns => column_clues = clues,
+                        }
+                    } else if (mem.eql(u8, child, "solution")) {
+                        try solutions.append(try Solution.parse(allocator, reader));
+                    } else if (mem.eql(u8, child, "note")) {
+                        try notes.append(try readElementTextAllocZ(allocator, reader));
+                    } else {
+                        try reader.skipElement();
                     }
-                } else if (child.name.is(null, "solution")) {
-                    try solutions.append(try Solution.parse(allocator, child, children.children()));
-                } else if (child.name.is(null, "note")) {
-                    try notes.append(try textContent(allocator, children.children()));
-                } else {
-                    try children.children().skip();
                 },
+                .element_end => break,
                 else => {},
             }
         }
@@ -248,7 +241,7 @@ pub const Puzzle = struct {
             find_solution: {
                 for (solutions.items) |solution| {
                     if (solution.type == .goal) {
-                        const clues = try solution.image.toClues(allocator, colors.values(), background_color orelse "white");
+                        const clues = try solution.image.toClues(allocator, colors.values(), background_color);
                         row_clues = clues.rows;
                         column_clues = clues.columns;
                         break :find_solution;
@@ -267,8 +260,8 @@ pub const Puzzle = struct {
             .copyright = copyright,
             .description = description,
             .colors = colors.unmanaged,
-            .default_color = default_color orelse "black",
-            .background_color = background_color orelse "white",
+            .default_color = default_color,
+            .background_color = background_color,
             // row_clues and column_clues cannot be null here since we tried to
             // derive them above, already failing if that wasn't possible
             .row_clues = row_clues.?,
@@ -279,9 +272,9 @@ pub const Puzzle = struct {
     }
 
     fn write(puzzle: Puzzle, writer: anytype) !void {
-        try writer.writeElementStart(.{ .local = "puzzle" });
-        try writer.writeAttribute(.{ .local = "defaultcolor" }, puzzle.default_color);
-        try writer.writeAttribute(.{ .local = "backgroundcolor" }, puzzle.background_color);
+        try writer.elementStart("puzzle");
+        try writer.attribute("defaultcolor", puzzle.default_color);
+        try writer.attribute("backgroundcolor", puzzle.background_color);
         if (puzzle.source) |source| {
             try writeTextElement(writer, "source", source);
         }
@@ -314,7 +307,7 @@ pub const Puzzle = struct {
         for (puzzle.notes) |note| {
             try writeTextElement(writer, "note", note);
         }
-        try writer.writeElementEnd(.{ .local = "puzzle" });
+        try writer.elementEnd("puzzle");
     }
 };
 
@@ -353,38 +346,35 @@ pub const Color = struct {
         };
     }
 
-    fn parse(allocator: Allocator, start: xml.Event.ElementStart, children: anytype) !Color {
-        var name: ?[:0]const u8 = null;
-        var char: ?u8 = null;
+    fn parse(allocator: Allocator, reader: anytype) !Color {
+        const name = name: {
+            const index = reader.attributeIndex("name") orelse return error.InvalidPbn;
+            break :name try attributeValueAllocZ(allocator, reader, index);
+        };
+        const char = char: {
+            const index = reader.attributeIndex("char") orelse break :char null;
+            const value = try reader.attributeValue(index);
+            if (value.len != 1) return error.InvalidPbn;
+            break :char value[0];
+        };
 
-        for (start.attributes) |attr| {
-            if (attr.name.is(null, "name")) {
-                name = try allocator.dupeZ(u8, attr.value);
-            } else if (attr.name.is(null, "char")) {
-                if (attr.value.len != 1) {
-                    return error.InvalidPbn;
-                }
-                char = attr.value[0];
-            }
-        }
-
-        const value: [:0]const u8 = try textContent(allocator, children.children());
+        const value = try readElementTextAllocZ(allocator, reader);
 
         return .{
-            .name = name orelse return error.InvalidPbn,
+            .name = name,
             .char = char,
             .value = value,
         };
     }
 
     fn write(color: Color, writer: anytype) !void {
-        try writer.writeElementStart(.{ .local = "color" });
-        try writer.writeAttribute(.{ .local = "name" }, color.name);
+        try writer.elementStart("color");
+        try writer.attribute("name", color.name);
         if (color.char) |char| {
-            try writer.writeAttribute(.{ .local = "char" }, &[_]u8{char});
+            try writer.attribute("char", &[_]u8{char});
         }
-        try writer.writeElementContent(color.value);
-        try writer.writeElementEnd(.{ .local = "color" });
+        try writer.text(color.value);
+        try writer.elementEnd("color");
     }
 };
 
@@ -394,56 +384,61 @@ pub const Clues = struct {
 
     pub const Type = enum { columns, rows };
 
-    fn parse(allocator: Allocator, start: xml.Event.ElementStart, children: anytype) !Clues {
-        var @"type": ?Type = null;
+    fn parse(allocator: Allocator, reader: anytype) !Clues {
+        const @"type" = type: {
+            const index = reader.attributeIndex("type") orelse return error.InvalidPbn;
+            break :type std.meta.stringToEnum(Type, try reader.attributeValue(index)) orelse return error.InvalidPbn;
+        };
         var lines = std.ArrayList(Line).init(allocator);
 
-        for (start.attributes) |attr| {
-            if (attr.name.is(null, "type")) {
-                @"type" = std.meta.stringToEnum(Type, attr.value) orelse return error.InvalidPbn;
-            }
-        }
-
-        while (try children.next()) |event| {
-            switch (event) {
-                .element_start => |child| if (child.name.is(null, "line")) {
-                    try lines.append(try Line.parse(allocator, children.children()));
-                } else {
-                    try children.children().skip();
+        while (true) {
+            switch (try reader.read()) {
+                .element_start => {
+                    const child = reader.elementName();
+                    if (mem.eql(u8, child, "line")) {
+                        try lines.append(try Line.parse(allocator, reader));
+                    } else {
+                        try reader.skipElement();
+                    }
                 },
+                .element_end => break,
                 else => {},
             }
         }
 
         return .{
-            .type = @"type" orelse return error.InvalidPbn,
+            .type = @"type",
             .lines = try lines.toOwnedSlice(),
         };
     }
 
     fn write(clues: Clues, writer: anytype) !void {
-        try writer.writeElementStart(.{ .local = "clues" });
-        try writer.writeAttribute(.{ .local = "type" }, @tagName(clues.type));
+        try writer.elementStart("clues");
+        try writer.attribute("type", @tagName(clues.type));
         for (clues.lines) |line| {
             try line.write(writer);
         }
-        try writer.writeElementEnd(.{ .local = "clues" });
+        try writer.elementEnd("clues");
     }
 };
 
 pub const Line = struct {
     counts: []const Count,
 
-    fn parse(allocator: Allocator, children: anytype) !Line {
+    fn parse(allocator: Allocator, reader: anytype) !Line {
         var counts = std.ArrayList(Count).init(allocator);
 
-        while (try children.next()) |event| {
-            switch (event) {
-                .element_start => |child| if (child.name.is(null, "count")) {
-                    try counts.append(try Count.parse(allocator, child, children.children()));
-                } else {
-                    try children.children().skip();
+        while (true) {
+            switch (try reader.read()) {
+                .element_start => {
+                    const child = reader.elementName();
+                    if (mem.eql(u8, child, "count")) {
+                        try counts.append(try Count.parse(allocator, reader));
+                    } else {
+                        try reader.skipElement();
+                    }
                 },
+                .element_end => break,
                 else => {},
             }
         }
@@ -454,11 +449,11 @@ pub const Line = struct {
     }
 
     fn write(line: Line, writer: anytype) !void {
-        try writer.writeElementStart(.{ .local = "line" });
+        try writer.elementStart("line");
         for (line.counts) |count| {
             try count.write(writer);
         }
-        try writer.writeElementEnd(.{ .local = "line" });
+        try writer.elementEnd("line");
     }
 };
 
@@ -466,20 +461,13 @@ pub const Count = struct {
     color: ?[:0]const u8,
     n: usize,
 
-    fn parse(allocator: Allocator, start: xml.Event.ElementStart, children: anytype) !Count {
-        var color: ?[:0]const u8 = null;
-
-        for (start.attributes) |attr| {
-            if (attr.name.is(null, "color")) {
-                color = try allocator.dupeZ(u8, attr.value);
-            }
-        }
-
-        const n = blk: {
-            const content = try textContent(allocator, children.children());
-            defer allocator.free(content);
-            break :blk std.fmt.parseInt(usize, content, 10) catch return error.InvalidPbn;
+    fn parse(allocator: Allocator, reader: anytype) !Count {
+        const color = color: {
+            const index = reader.attributeIndex("color") orelse break :color null;
+            break :color try attributeValueAllocZ(allocator, reader, index);
         };
+
+        const n = std.fmt.parseInt(usize, try reader.readElementText(), 10) catch return error.InvalidPbn;
 
         return .{
             .color = color,
@@ -488,13 +476,13 @@ pub const Count = struct {
     }
 
     fn write(count: Count, writer: anytype) !void {
-        try writer.writeElementStart(.{ .local = "count" });
+        try writer.elementStart("count");
         if (count.color) |color| {
-            try writer.writeAttribute(.{ .local = "color" }, color);
+            try writer.attribute("color", color);
         }
         var buf: [32]u8 = undefined;
-        try writer.writeElementContent(std.fmt.bufPrint(&buf, "{}", .{count.n}) catch unreachable);
-        try writer.writeElementEnd(.{ .local = "count" });
+        try writer.text(std.fmt.bufPrint(&buf, "{}", .{count.n}) catch unreachable);
+        try writer.elementEnd("count");
     }
 };
 
@@ -505,45 +493,46 @@ pub const Solution = struct {
 
     pub const Type = enum { goal, solution, saved };
 
-    fn parse(allocator: Allocator, start: xml.Event.ElementStart, children: anytype) !Solution {
-        var @"type": ?Type = null;
+    fn parse(allocator: Allocator, reader: anytype) !Solution {
+        const @"type" = type: {
+            const index = reader.attributeIndex("type") orelse break :type .goal;
+            break :type std.meta.stringToEnum(Type, try reader.attributeValue(index)) orelse return error.InvalidPbn;
+        };
         var image: ?Image = null;
         var notes = std.ArrayList([:0]const u8).init(allocator);
 
-        for (start.attributes) |attr| {
-            if (attr.name.is(null, "type")) {
-                @"type" = std.meta.stringToEnum(Type, attr.value) orelse return error.InvalidPbn;
-            }
-        }
-
-        while (try children.next()) |event| {
-            switch (event) {
-                .element_start => |child| if (child.name.is(null, "image")) {
-                    image = try Image.parse(allocator, children.children());
-                } else if (child.name.is(null, "note")) {
-                    try notes.append(try textContent(allocator, children.children()));
-                } else {
-                    try children.children().skip();
+        while (true) {
+            switch (try reader.read()) {
+                .element_start => {
+                    const child = reader.elementName();
+                    if (mem.eql(u8, child, "image")) {
+                        image = try Image.parse(allocator, reader);
+                    } else if (mem.eql(u8, child, "note")) {
+                        try notes.append(try readElementTextAllocZ(allocator, reader));
+                    } else {
+                        try reader.skipElement();
+                    }
                 },
+                .element_end => break,
                 else => {},
             }
         }
 
         return .{
-            .type = @"type" orelse .goal,
+            .type = @"type",
             .image = image orelse return error.InvalidPbn,
             .notes = try notes.toOwnedSlice(),
         };
     }
 
     fn write(solution: Solution, writer: anytype) !void {
-        try writer.writeElementStart(.{ .local = "solution" });
-        try writer.writeAttribute(.{ .local = "type" }, @tagName(solution.type));
+        try writer.elementStart("solution");
+        try writer.attribute("type", @tagName(solution.type));
         try solution.image.write(writer);
         for (solution.notes) |note| {
             try writeTextElement(writer, "note", note);
         }
-        try writer.writeElementEnd(.{ .local = "solution" });
+        try writer.elementEnd("solution");
     }
 };
 
@@ -693,45 +682,47 @@ pub const Image = struct {
         };
     }
 
-    fn parse(allocator: Allocator, children: anytype) !Image {
-        const text = try textContent(allocator, children);
-        defer allocator.free(text);
-        return try fromText(allocator, text);
+    fn parse(allocator: Allocator, reader: anytype) !Image {
+        return try fromText(allocator, try reader.readElementText());
     }
 
     fn write(image: Image, writer: anytype) !void {
-        try writer.writeElementStart(.{ .local = "image" });
+        try writer.elementStart("image");
+        try writer.text("\n");
         var row_iter = mem.window([]const u8, image.chars, image.columns, image.columns);
         while (row_iter.next()) |row| {
-            try writer.writeElementContent("|");
+            try writer.text("|");
             for (row) |options| {
                 if (options.len == 1) {
-                    try writer.writeElementContent(&[_]u8{options[0]});
+                    try writer.text(&[_]u8{options[0]});
                 } else {
-                    try writer.writeElementContent("[");
-                    try writer.writeElementContent(options);
-                    try writer.writeElementContent("]");
+                    try writer.text("[");
+                    try writer.text(options);
+                    try writer.text("]");
                 }
             }
-            try writer.writeElementContent("|\n");
+            try writer.text("|\n");
         }
-        try writer.writeElementEnd(.{ .local = "image" });
+        try writer.elementEnd("image");
     }
 };
 
 fn writeTextElement(writer: anytype, name: []const u8, value: []const u8) !void {
-    try writer.writeElementStart(.{ .local = name });
-    try writer.writeElementContent(value);
-    try writer.writeElementEnd(.{ .local = name });
+    try writer.elementStart(name);
+    try writer.text(value);
+    try writer.elementEnd(name);
 }
 
-fn textContent(allocator: Allocator, children: anytype) ![:0]u8 {
+fn attributeValueAllocZ(allocator: Allocator, reader: anytype, index: usize) ![:0]u8 {
+    var value = std.ArrayList(u8).init(allocator);
+    defer value.deinit();
+    try reader.attributeValueWrite(index, value.writer());
+    return try value.toOwnedSliceSentinel(0);
+}
+
+fn readElementTextAllocZ(allocator: Allocator, reader: anytype) ![:0]u8 {
     var text = std.ArrayList(u8).init(allocator);
-    while (try children.next()) |event| {
-        switch (event) {
-            .element_content => |e| try text.appendSlice(e.content),
-            else => {},
-        }
-    }
+    defer text.deinit();
+    try reader.readElementTextWrite(text.writer());
     return try text.toOwnedSliceSentinel(0);
 }
