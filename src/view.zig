@@ -313,7 +313,7 @@ pub const View = extern struct {
 
     fn finalize(view: *View) callconv(.C) void {
         view.private().arena.deinit();
-        Class.parent.as(gobject.Object.Class).finalize.?(view.as(gobject.Object));
+        gobject.Object.virtual_methods.finalize.call(Class.parent.as(gobject.Object.Class), view.as(gobject.Object));
     }
 
     pub fn load(view: *View, puzzle: pbn.Puzzle) void {
@@ -813,7 +813,7 @@ pub const ColorPicker = extern struct {
 
     fn finalize(picker: *ColorPicker) callconv(.C) void {
         picker.private().arena.deinit();
-        Class.parent.as(gobject.Object.Class).finalize.?(picker.as(gobject.Object));
+        gobject.Object.virtual_methods.finalize.call(Class.parent.as(gobject.Object.Class), picker.as(gobject.Object));
     }
 
     pub fn setColors(picker: *ColorPicker, colors: []const Color) void {

@@ -152,7 +152,7 @@ const ApplicationWindow = extern struct {
         if (win.private().puzzle_set) |*puzzle_set| {
             puzzle_set.deinit();
         }
-        Class.parent.as(gobject.Object.Class).finalize.?(win.as(gobject.Object));
+        gobject.Object.virtual_methods.finalize.call(Class.parent.as(gobject.Object.Class), win.as(gobject.Object));
     }
 
     fn loadLibrary(win: *ApplicationWindow) void {
