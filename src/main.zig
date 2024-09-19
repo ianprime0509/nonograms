@@ -142,7 +142,7 @@ const ApplicationWindow = extern struct {
 
     fn dispose(win: *ApplicationWindow) callconv(.C) void {
         gtk.Widget.disposeTemplate(win.as(gtk.Widget), getGObjectType());
-        gobject.Object.virtual_methods.dispose.call(Class.parent.as(gobject.Object.Class), win.as(gobject.Object));
+        gobject.Object.virtual_methods.dispose.call(Class.parent, win.as(Parent));
     }
 
     fn finalize(win: *ApplicationWindow) callconv(.C) void {
@@ -152,7 +152,7 @@ const ApplicationWindow = extern struct {
         if (win.private().puzzle_set) |*puzzle_set| {
             puzzle_set.deinit();
         }
-        gobject.Object.virtual_methods.finalize.call(Class.parent.as(gobject.Object.Class), win.as(gobject.Object));
+        gobject.Object.virtual_methods.finalize.call(Class.parent, win.as(Parent));
     }
 
     fn loadLibrary(win: *ApplicationWindow) void {

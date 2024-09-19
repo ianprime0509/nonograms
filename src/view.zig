@@ -308,12 +308,12 @@ pub const View = extern struct {
 
     fn dispose(view: *View) callconv(.C) void {
         gtk.Widget.disposeTemplate(view.as(gtk.Widget), getGObjectType());
-        gobject.Object.virtual_methods.dispose.call(Class.parent.as(gobject.Object.Class), view.as(gobject.Object));
+        gobject.Object.virtual_methods.dispose.call(Class.parent, view.as(Parent));
     }
 
     fn finalize(view: *View) callconv(.C) void {
         view.private().arena.deinit();
-        gobject.Object.virtual_methods.finalize.call(Class.parent.as(gobject.Object.Class), view.as(gobject.Object));
+        gobject.Object.virtual_methods.finalize.call(Class.parent, view.as(Parent));
     }
 
     pub fn load(view: *View, puzzle: pbn.Puzzle) void {
@@ -808,12 +808,12 @@ pub const ColorPicker = extern struct {
 
     fn dispose(picker: *ColorPicker) callconv(.C) void {
         gtk.Widget.disposeTemplate(picker.as(gtk.Widget), getGObjectType());
-        gobject.Object.virtual_methods.dispose.call(Class.parent.as(gobject.Object.Class), picker.as(gobject.Object));
+        gobject.Object.virtual_methods.dispose.call(Class.parent, picker.as(Parent));
     }
 
     fn finalize(picker: *ColorPicker) callconv(.C) void {
         picker.private().arena.deinit();
-        gobject.Object.virtual_methods.finalize.call(Class.parent.as(gobject.Object.Class), picker.as(gobject.Object));
+        gobject.Object.virtual_methods.finalize.call(Class.parent, picker.as(Parent));
     }
 
     pub fn setColors(picker: *ColorPicker, colors: []const Color) void {
@@ -963,7 +963,7 @@ pub const ColorButton = extern struct {
 
     fn dispose(button: *ColorButton) callconv(.C) void {
         gtk.Widget.disposeTemplate(button.as(gtk.Widget), getGObjectType());
-        gobject.Object.virtual_methods.dispose.call(Class.parent.as(gobject.Object.Class), button.as(gobject.Object));
+        gobject.Object.virtual_methods.dispose.call(Class.parent, button.as(Parent));
     }
 
     fn draw(_: *gtk.DrawingArea, cr: *cairo.Context, width: c_int, height: c_int, user_data: ?*anyopaque) callconv(.C) void {
