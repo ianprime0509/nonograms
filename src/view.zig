@@ -64,6 +64,102 @@ const State = struct {
     hover_tile: ?Cell,
     solved: bool,
 
+    fn load(allocator: Allocator, puzzle: pbn.Puzzle) Allocator.Error!State {
+        var colors = std.StringArrayHashMap(Color).init(allocator);
+        defer colors.deinit();
+        try colors.put(puzzle.background_color, background_color: {
+            const pbn_color = puzzle.colors.get(puzzle.background_color) orelse pbn.Color.white;
+            break :background_color Color.fromPbn(pbn_color);
+        });
+        try colors.put(puzzle.default_color, default_color: {
+            const pbn_color = puzzle.colors.get(puzzle.default_color) orelse pbn.Color.black;
+            break :default_color Color.fromPbn(pbn_color);
+        });
+        for (puzzle.colors.values()) |color| {
+            try colors.put(color.name, Color.fromPbn(color));
+        }
+
+        const rows = puzzle.row_clues.lines.len;
+        var row_hints = try std.ArrayList([]Hint).initCapacity(allocator, rows);
+        defer row_hints.deinit();
+        errdefer for (row_hints.items) |row| allocator.free(row);
+        var max_row_hints: usize = 0;
+        for (puzzle.row_clues.lines) |line| {
+            const row = try allocator.alloc(Hint, line.counts.len);
+            row_hints.appendAssumeCapacity(row);
+            max_row_hints = @max(max_row_hints, row.len);
+            for (row, line.counts) |*hint, count| {
+                const color_name = count.color orelse puzzle.default_color;
+                hint.* = .{
+                    .n = count.n,
+                    .color = if (colors.getIndex(color_name)) |index| @enumFromInt(index) else .default,
+                };
+            }
+        }
+        const columns = puzzle.column_clues.lines.len;
+        var column_hints = try std.ArrayList([]Hint).initCapacity(allocator, columns);
+        defer column_hints.deinit();
+        errdefer for (column_hints.items) |column| allocator.free(column);
+        var max_column_hints: usize = 0;
+        for (puzzle.column_clues.lines) |line| {
+            const column = try allocator.alloc(Hint, line.counts.len);
+            column_hints.appendAssumeCapacity(column);
+            max_column_hints = @max(max_column_hints, column.len);
+            for (column, line.counts) |*hint, count| {
+                const color_name = count.color orelse puzzle.default_color;
+                hint.* = .{
+                    .n = count.n,
+                    .color = if (colors.getIndex(color_name)) |index| @enumFromInt(index) else .default,
+                };
+            }
+        }
+        const tiles = try allocator.alloc(Color.Index, rows * columns);
+        errdefer allocator.free(tiles);
+        @memset(tiles, .background);
+
+        const saved_image = for (puzzle.solutions) |solution| {
+            if (solution.type == .saved) {
+                break solution.image;
+            }
+        } else null;
+        if (saved_image) |image| {
+            // We can't trust that the saved image is actually valid: in
+            // particular, it could have completely incorrect dimensions
+            if (image.rows == rows and image.columns == columns) {
+                var colors_by_char = std.AutoHashMap(u8, Color.Index).init(allocator);
+                defer colors_by_char.deinit();
+                for (puzzle.colors.values()) |color| {
+                    if (color.char) |char| {
+                        const index: Color.Index = @enumFromInt(colors.getIndex(color.name).?);
+                        try colors_by_char.put(char, index);
+                    }
+                }
+
+                for (image.chars, tiles) |options, *color| {
+                    switch (options.len) {
+                        0 => color.* = .none,
+                        1 => color.* = colors_by_char.get(options[0]) orelse .background,
+                        else => {},
+                    }
+                }
+            }
+        }
+
+        var state: State = .{
+            .colors = try allocator.dupe(Color, colors.values()),
+            .tiles = tiles,
+            .selected_color = .default,
+            .row_hints = try row_hints.toOwnedSlice(),
+            .max_row_hints = max_row_hints,
+            .column_hints = try column_hints.toOwnedSlice(),
+            .max_column_hints = max_column_hints,
+            .hover_tile = null,
+            .solved = undefined,
+        };
+        state.solved = state.isSolved();
+        return state;
+    }
+
     fn isSolved(state: State) bool {
         for (0..state.row_hints.len) |i| {
             if (!state.isLineSolved(.row, i)) {
@@ -313,99 +409,14 @@ pub const View = extern struct {
         _ = view.private().arena.reset(.retain_capacity);
         const allocator = view.private().arena.allocator();
 
-        var colors = std.StringArrayHashMap(Color).init(allocator);
-        defer colors.deinit();
-        colors.put(puzzle.background_color, background_color: {
-            const pbn_color = puzzle.colors.get(puzzle.background_color) orelse pbn.Color.white;
-            break :background_color Color.fromPbn(pbn_color);
-        }) catch oom();
-        colors.put(puzzle.default_color, default_color: {
-            const pbn_color = puzzle.colors.get(puzzle.default_color) orelse pbn.Color.black;
-            break :default_color Color.fromPbn(pbn_color);
-        }) catch oom();
-        for (puzzle.colors.values()) |color| {
-            colors.put(color.name, Color.fromPbn(color)) catch oom();
-        }
-
-        const rows = puzzle.row_clues.lines.len;
-        const row_hints = allocator.alloc([]Hint, rows) catch oom();
-        var max_row_hints: usize = 0;
-        for (row_hints, puzzle.row_clues.lines) |*row, line| {
-            row.* = allocator.alloc(Hint, line.counts.len) catch oom();
-            max_row_hints = @max(max_row_hints, line.counts.len);
-            for (row.*, line.counts) |*hint, count| {
-                const color_name = count.color orelse puzzle.default_color;
-                hint.* = .{
-                    .n = count.n,
-                    .color = if (colors.getIndex(color_name)) |index| @enumFromInt(index) else .default,
-                };
-            }
-        }
-        const columns = puzzle.column_clues.lines.len;
-        const column_hints = allocator.alloc([]Hint, columns) catch oom();
-        var max_column_hints: usize = 0;
-        for (column_hints, puzzle.column_clues.lines) |*column, line| {
-            column.* = allocator.alloc(Hint, line.counts.len) catch oom();
-            max_column_hints = @max(max_column_hints, line.counts.len);
-            for (column.*, line.counts) |*hint, count| {
-                const color_name = count.color orelse puzzle.default_color;
-                hint.* = .{
-                    .n = count.n,
-                    .color = if (colors.getIndex(color_name)) |index| @enumFromInt(index) else .default,
-                };
-            }
-        }
-        const tiles = allocator.alloc(Color.Index, rows * columns) catch oom();
-        @memset(tiles, .background);
-
-        var state = State{
-            .colors = allocator.dupe(Color, colors.values()) catch oom(),
-            .tiles = tiles,
-            .selected_color = .default,
-            .row_hints = row_hints,
-            .max_row_hints = max_row_hints,
-            .column_hints = column_hints,
-            .max_column_hints = max_column_hints,
-            .hover_tile = null,
-            .solved = false,
-        };
-
-        const saved_image = for (puzzle.solutions) |solution| {
-            if (solution.type == .saved) {
-                break solution.image;
-            }
-        } else null;
-        if (saved_image) |image| {
-            // We can't trust that the saved image is actually valid: in
-            // particular, it could have completely incorrect dimensions
-            if (image.rows == rows and image.columns == columns) {
-                var colors_by_char = std.AutoHashMap(u8, Color.Index).init(allocator);
-                defer colors_by_char.deinit();
-                for (puzzle.colors.values()) |color| {
-                    if (color.char) |char| {
-                        const index: Color.Index = @enumFromInt(colors.getIndex(color.name).?);
-                        colors_by_char.put(char, index) catch oom();
-                    }
-                }
-
-                for (image.chars, tiles) |options, *color| {
-                    switch (options.len) {
-                        0 => color.* = .none,
-                        1 => color.* = colors_by_char.get(options[0]) orelse .background,
-                        else => {},
-                    }
-                }
-            }
-        }
-        state.solved = state.isSolved();
-
+        const state = State.load(allocator, puzzle) catch oom();
         view.private().state = state;
-        view.private().cleared_tiles = allocator.alloc(Color.Index, tiles.len) catch oom();
+        view.private().cleared_tiles = allocator.alloc(Color.Index, state.tiles.len) catch oom();
         @memset(view.private().cleared_tiles, .none);
         view.private().dimensions = null;
         gtk.Widget.queueDraw(view.private().drawing_area.as(gtk.Widget));
 
-        view.private().color_picker.setColors(colors.values());
+        view.private().color_picker.setColors(state.colors);
     }
 
     pub fn clear(view: *View) void {
