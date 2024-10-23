@@ -314,37 +314,12 @@ pub const Puzzle = struct {
 pub const Color = struct {
     name: [:0]const u8,
     char: ?u8,
-    value: [:0]const u8,
+    r: u8,
+    g: u8,
+    b: u8,
 
-    pub const black = Color{ .name = "black", .char = 'X', .value = "000" };
-    pub const white = Color{ .name = "white", .char = '.', .value = "fff" };
-
-    pub fn toRgb(color: Color) error{InvalidColor}!struct { r: u8, g: u8, b: u8 } {
-        if (color.value.len == 3) {
-            return .{
-                .r = std.fmt.parseInt(u8, &.{ color.value[0], color.value[0] }, 16) catch return error.InvalidColor,
-                .g = std.fmt.parseInt(u8, &.{ color.value[1], color.value[1] }, 16) catch return error.InvalidColor,
-                .b = std.fmt.parseInt(u8, &.{ color.value[2], color.value[2] }, 16) catch return error.InvalidColor,
-            };
-        } else if (color.value.len == 6) {
-            return .{
-                .r = std.fmt.parseInt(u8, color.value[0..2], 16) catch return error.InvalidColor,
-                .g = std.fmt.parseInt(u8, color.value[2..4], 16) catch return error.InvalidColor,
-                .b = std.fmt.parseInt(u8, color.value[4..6], 16) catch return error.InvalidColor,
-            };
-        } else {
-            return error.InvalidColor;
-        }
-    }
-
-    pub fn toFloatRgb(color: Color) error{InvalidColor}!struct { r: f64, g: f64, b: f64 } {
-        const rgb = try color.toRgb();
-        return .{
-            .r = @as(f64, @floatFromInt(rgb.r)) / 255,
-            .g = @as(f64, @floatFromInt(rgb.g)) / 255,
-            .b = @as(f64, @floatFromInt(rgb.b)) / 255,
-        };
-    }
+    pub const black = Color{ .name = "black", .char = 'X', .r = 0, .g = 0, .b = 0 };
+    pub const white = Color{ .name = "white", .char = '.', .r = 255, .g = 255, .b = 255 };
 
     fn parse(allocator: Allocator, reader: anytype) !Color {
         const name = name: {
@@ -357,13 +332,31 @@ pub const Color = struct {
             if (value.len != 1) return error.InvalidPbn;
             break :char value[0];
         };
-
-        const value = try readElementTextAllocZ(allocator, reader);
+        const r, const g, const b = value: {
+            const value = try reader.readElementText();
+            if (value.len == 3) {
+                break :value .{
+                    std.fmt.parseInt(u8, value[0..1] ++ value[0..1], 16) catch return error.InvalidPbn,
+                    std.fmt.parseInt(u8, value[1..2] ++ value[1..2], 16) catch return error.InvalidPbn,
+                    std.fmt.parseInt(u8, value[2..3] ++ value[2..3], 16) catch return error.InvalidPbn,
+                };
+            } else if (value.len == 6) {
+                break :value .{
+                    std.fmt.parseInt(u8, value[0..2], 16) catch return error.InvalidPbn,
+                    std.fmt.parseInt(u8, value[2..4], 16) catch return error.InvalidPbn,
+                    std.fmt.parseInt(u8, value[4..6], 16) catch return error.InvalidPbn,
+                };
+            } else {
+                return error.InvalidPbn;
+            }
+        };
 
         return .{
             .name = name,
             .char = char,
-            .value = value,
+            .r = r,
+            .g = g,
+            .b = b,
         };
     }
 
@@ -371,9 +364,11 @@ pub const Color = struct {
         try writer.elementStart("color");
         try writer.attribute("name", color.name);
         if (color.char) |char| {
-            try writer.attribute("char", &[_]u8{char});
+            try writer.attribute("char", &.{char});
         }
-        try writer.text(color.value);
+        var value_buf: [6]u8 = undefined;
+        const value = std.fmt.bufPrint(&value_buf, "{X:0>2}{X:0>2}{X:0>2}", .{ color.r, color.g, color.b }) catch unreachable;
+        try writer.text(value);
         try writer.elementEnd("color");
     }
 };

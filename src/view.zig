@@ -14,9 +14,9 @@ const ArenaAllocator = std.heap.ArenaAllocator;
 const oom = util.oom;
 
 const Color = struct {
-    r: f64,
-    g: f64,
-    b: f64,
+    r: u8,
+    g: u8,
+    b: u8,
 
     pub const getGObjectType = gobject.ext.defineBoxed(Color, .{});
 
@@ -27,23 +27,24 @@ const Color = struct {
         _,
     };
 
-    const white = Color{ .r = 1, .g = 1, .b = 1 };
-    const black = Color{ .r = 0, .g = 0, .b = 0 };
-    const red = Color{ .r = 1, .g = 0, .b = 0 };
+    const white: Color = .{ .r = 1, .g = 1, .b = 1 };
+    const black: Color = .{ .r = 0, .g = 0, .b = 0 };
 
-    fn fromPbn(color: pbn.Color) !Color {
-        const rgb = try color.toFloatRgb();
-        return .{ .r = rgb.r, .g = rgb.g, .b = rgb.b };
+    fn fromPbn(color: pbn.Color) Color {
+        return .{ .r = color.r, .g = color.g, .b = color.b };
     }
 
-    fn toHex(color: Color) [6]u8 {
-        var buf: [6]u8 = undefined;
-        _ = std.fmt.bufPrint(&buf, "{X:0>2}{X:0>2}{X:0>2}", .{
-            @as(u8, @intFromFloat(@round(color.r * 255))),
-            @as(u8, @intFromFloat(@round(color.g * 255))),
-            @as(u8, @intFromFloat(@round(color.b * 255))),
-        }) catch unreachable;
-        return buf;
+    fn toFloatRgb(color: Color) struct { f64, f64, f64 } {
+        return .{
+            @as(f64, @floatFromInt(color.r)) / 255,
+            @as(f64, @floatFromInt(color.g)) / 255,
+            @as(f64, @floatFromInt(color.b)) / 255,
+        };
+    }
+
+    fn setSourceOf(color: Color, cr: *cairo.Context) void {
+        const r, const g, const b = color.toFloatRgb();
+        cr.setSourceRgb(r, g, b);
     }
 };
 
@@ -142,20 +143,12 @@ const State = struct {
     }
 
     fn toImage(state: State, allocator: Allocator, colors: []const pbn.Color) !pbn.Image {
-        var color_chars = std.StringHashMap(u8).init(allocator);
-        defer {
-            var key_iterator = color_chars.keyIterator();
-            while (key_iterator.next()) |key| {
-                allocator.free(key.*);
-            }
-            color_chars.deinit();
-        }
+        var color_chars = std.AutoArrayHashMap(Color, u8).init(allocator);
+        defer color_chars.deinit();
         try color_chars.ensureTotalCapacity(@intCast(colors.len));
         for (colors) |color| {
             if (color.char) |char| {
-                const value = try std.ascii.allocUpperString(allocator, color.value);
-                errdefer allocator.free(value);
-                try color_chars.put(value, char);
+                try color_chars.put(Color.fromPbn(color), char);
             }
         }
 
@@ -165,7 +158,7 @@ const State = struct {
             for (row) |color_index| {
                 if (color_index != .none) {
                     const color = state.colors[@intFromEnum(color_index)];
-                    const color_char = color_chars.get(&color.toHex()) orelse return error.UndefinedColor;
+                    const color_char = color_chars.get(color) orelse return error.UndefinedColor;
                     chars.appendAssumeCapacity(try allocator.dupe(u8, &.{color_char}));
                 } else {
                     chars.appendAssumeCapacity(try allocator.dupe(u8, ""));
@@ -324,14 +317,14 @@ pub const View = extern struct {
         defer colors.deinit();
         colors.put(puzzle.background_color, background_color: {
             const pbn_color = puzzle.colors.get(puzzle.background_color) orelse pbn.Color.white;
-            break :background_color Color.fromPbn(pbn_color) catch Color.white;
+            break :background_color Color.fromPbn(pbn_color);
         }) catch oom();
         colors.put(puzzle.default_color, default_color: {
             const pbn_color = puzzle.colors.get(puzzle.default_color) orelse pbn.Color.black;
-            break :default_color Color.fromPbn(pbn_color) catch Color.black;
+            break :default_color Color.fromPbn(pbn_color);
         }) catch oom();
         for (puzzle.colors.values()) |color| {
-            colors.put(color.name, Color.fromPbn(color) catch Color.black) catch oom();
+            colors.put(color.name, Color.fromPbn(color)) catch oom();
         }
 
         const rows = puzzle.row_clues.lines.len;
@@ -484,7 +477,7 @@ pub const View = extern struct {
     fn drawHint(cr: *cairo.Context, layout: *pango.Layout, hint: Hint, pos: Point, dims: Dimensions, state: State) void {
         var buf: [32]u8 = undefined;
         const color = state.colors[@intFromEnum(hint.color)];
-        cr.setSourceRgb(color.r, color.g, color.b);
+        color.setSourceOf(cr);
         const text = std.fmt.bufPrintZ(&buf, "{}", .{hint.n}) catch unreachable;
         layout.setText(text, -1);
         var w: c_int = undefined;
@@ -503,13 +496,13 @@ pub const View = extern struct {
             state.colors[@intFromEnum(color)]
         else
             state.colors[@intFromEnum(Color.Index.background)];
-        cr.setSourceRgb(bg_color.r, bg_color.g, bg_color.b);
+        bg_color.setSourceOf(cr);
         cr.rectangle(pos.x, pos.y, dims.tile_size, dims.tile_size);
         cr.fill();
 
         if (color == .none) {
             const x_color = state.colors[@intFromEnum(Color.Index.default)];
-            cr.setSourceRgb(x_color.r, x_color.g, x_color.b);
+            x_color.setSourceOf(cr);
             cr.setLineWidth(Dimensions.gap_frac * dims.tile_size);
             cr.moveTo(pos.x + dims.tile_size * 0.25, pos.y + dims.tile_size * 0.25);
             cr.lineTo(pos.x + dims.tile_size * 0.75, pos.y + dims.tile_size * 0.75);
@@ -972,12 +965,12 @@ pub const ColorButton = extern struct {
         const h: f64 = @floatFromInt(height);
 
         const color = button.private().color;
-        cr.setSourceRgb(color.r, color.g, color.b);
+        color.setSourceOf(cr);
         cr.rectangle(0, 0, w, h);
         cr.fill();
 
         if (button.private().x_color) |x_color| {
-            cr.setSourceRgb(x_color.r, x_color.g, x_color.b);
+            x_color.setSourceOf(cr);
             cr.setLineWidth(Dimensions.gap_frac * w);
             cr.moveTo(w * 0.25, h * 0.25);
             cr.lineTo(w * 0.75, h * 0.75);
