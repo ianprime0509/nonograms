@@ -16,7 +16,6 @@ const c_allocator = std.heap.c_allocator;
 const mem = std.mem;
 const oom = @import("util.zig").oom;
 
-pub const application_id = "dev.ianjohnson.Nonograms";
 const package = "nonograms";
 
 pub fn main() !void {
@@ -41,7 +40,7 @@ const Application = extern struct {
 
     pub fn new() *Application {
         return gobject.ext.newInstance(Application, .{
-            .application_id = application_id,
+            .application_id = build_options.app_id,
             .flags = gio.ApplicationFlags{},
         });
     }
@@ -136,6 +135,10 @@ const ApplicationWindow = extern struct {
         _ = View.signals.solved.connect(win.private().view, *ApplicationWindow, &handlePuzzleSolved, win, .{});
 
         gtk.Window.setFocus(win.as(gtk.Window), win.private().view.as(gtk.Widget));
+
+        if (build_options.devel) {
+            gtk.Widget.addCssClass(win.as(gtk.Widget), "devel");
+        }
 
         win.loadLibrary();
     }

@@ -5,12 +5,17 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const devel = b.release_mode == .off;
+    const app_id = "dev.ianjohnson.Nonograms";
+
     const gobject = b.dependency("gobject", .{});
     const xml = b.dependency("xml", .{}).module("xml");
 
     const data_dir: std.Build.InstallDir = .{ .custom = "share" };
     const locale_dir: std.Build.InstallDir = .{ .custom = "share/locale" };
     const build_options = b.addOptions();
+    build_options.addOption(bool, "devel", devel);
+    build_options.addOption([]const u8, "app_id", app_id);
     build_options.addOption([]const u8, "locale_dir", b.getInstallPath(locale_dir, ""));
 
     const exe = b.addExecutable(.{

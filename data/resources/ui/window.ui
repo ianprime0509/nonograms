@@ -4,9 +4,6 @@
     <property name="title" translatable="yes">Nonograms</property>
     <property name="default-width">600</property>
     <property name="default-height">600</property>
-    <style>
-      <class name="devel" />
-    </style>
     <property name="content">
       <object class="GtkBox">
         <property name="orientation">vertical</property>

@@ -1,0 +1,25 @@
+id: dev.ianjohnson.Nonograms
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.ziglang
+command: nonograms
+finish-args:
+  - --device=dri
+  - --socket=wayland
+  - --share=ipc
+  - --socket=fallback-x11
+build-options:
+  append-path: /usr/lib/sdk/ziglang
+  build-args:
+    - --share=network
+modules:
+  - name: Nonograms
+    buildsystem: simple
+    build-commands:
+      - zig build --prefix /app --release=safe
+    sources:
+      - type: git
+        url: ../
+        branch: main
