@@ -395,7 +395,7 @@ const ApplicationWindow = extern struct {
         puzzles[puzzle_index] = puzzle;
         puzzle_set.puzzles = puzzles;
 
-        puzzle_set.writeFile(puzzle_set_path) catch return;
+        puzzle_set.writeFile(c_allocator, puzzle_set_path) catch return;
     }
 
     fn private(win: *ApplicationWindow) *Private {

@@ -8,7 +8,7 @@ const Allocator = mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 
 pub const Error = error{InvalidPbn} || Allocator.Error;
-pub const WriteError = std.fs.File.OpenError || std.fs.File.SyncError || std.fs.File.WriteError;
+pub const WriteError = std.fs.File.OpenError || std.fs.File.SyncError || std.fs.File.WriteError || Allocator.Error;
 
 pub const PuzzleSet = struct {
     puzzles: []const Puzzle,
@@ -32,12 +32,13 @@ pub const PuzzleSet = struct {
         return parseDoc(allocator, &doc);
     }
 
-    pub fn writeFile(set: PuzzleSet, path: [:0]const u8) WriteError!void {
+    pub fn writeFile(set: PuzzleSet, allocator: Allocator, path: [:0]const u8) WriteError!void {
         const file = try std.fs.cwd().createFile(path, .{});
         defer file.close();
         var buffered_writer = std.io.bufferedWriter(file.writer());
         var out = xml.streamingOutput(buffered_writer.writer());
-        var writer = out.writer(.{ .indent = "  " });
+        var writer = out.writer(allocator, .{ .indent = "  " });
+        defer writer.deinit();
         try set.writeDoc(&writer);
         try buffered_writer.flush();
         try file.sync();
@@ -151,7 +152,7 @@ pub const PuzzleSet = struct {
         for (set.notes) |note| {
             try writeTextElement(writer, "note", note);
         }
-        try writer.elementEnd("puzzleset");
+        try writer.elementEnd();
     }
 };
 
@@ -307,7 +308,7 @@ pub const Puzzle = struct {
         for (puzzle.notes) |note| {
             try writeTextElement(writer, "note", note);
         }
-        try writer.elementEnd("puzzle");
+        try writer.elementEnd();
     }
 };
 
@@ -369,7 +370,7 @@ pub const Color = struct {
         var value_buf: [6]u8 = undefined;
         const value = std.fmt.bufPrint(&value_buf, "{X:0>2}{X:0>2}{X:0>2}", .{ color.r, color.g, color.b }) catch unreachable;
         try writer.text(value);
-        try writer.elementEnd("color");
+        try writer.elementEnd();
     }
 };
 
@@ -413,7 +414,7 @@ pub const Clues = struct {
         for (clues.lines) |line| {
             try line.write(writer);
         }
-        try writer.elementEnd("clues");
+        try writer.elementEnd();
     }
 };
 
@@ -448,7 +449,7 @@ pub const Line = struct {
         for (line.counts) |count| {
             try count.write(writer);
         }
-        try writer.elementEnd("line");
+        try writer.elementEnd();
     }
 };
 
@@ -477,7 +478,7 @@ pub const Count = struct {
         }
         var buf: [32]u8 = undefined;
         try writer.text(std.fmt.bufPrint(&buf, "{}", .{count.n}) catch unreachable);
-        try writer.elementEnd("count");
+        try writer.elementEnd();
     }
 };
 
@@ -527,7 +528,7 @@ pub const Solution = struct {
         for (solution.notes) |note| {
             try writeTextElement(writer, "note", note);
         }
-        try writer.elementEnd("solution");
+        try writer.elementEnd();
     }
 };
 
@@ -698,14 +699,14 @@ pub const Image = struct {
             }
             try writer.text("|\n");
         }
-        try writer.elementEnd("image");
+        try writer.elementEnd();
     }
 };
 
 fn writeTextElement(writer: anytype, name: []const u8, value: []const u8) !void {
     try writer.elementStart(name);
     try writer.text(value);
-    try writer.elementEnd(name);
+    try writer.elementEnd();
 }
 
 fn attributeValueAllocZ(allocator: Allocator, reader: anytype, index: usize) ![:0]u8 {
