@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) !void {
     const locale_dir: std.Build.InstallDir = .{ .custom = "share/locale" };
     const build_options = b.addOptions();
     build_options.addOption(bool, "devel", devel);
-    build_options.addOption([]const u8, "app_id", app_id);
+    build_options.addOption([:0]const u8, "app_id", app_id);
     build_options.addOption([]const u8, "locale_dir", b.getInstallPath(locale_dir, ""));
 
     const exe = b.addExecutable(.{

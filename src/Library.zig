@@ -2,12 +2,12 @@ entries: []const Entry,
 arena: ArenaAllocator,
 
 const std = @import("std");
+const build_options = @import("build_options");
 const mem = std.mem;
 const Allocator = mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const glib = @import("glib");
 const default_puzzles = @import("puzzles").default_puzzles;
-const application_id = @import("main.zig").application_id;
 const pbn = @import("pbn.zig");
 
 const Library = @This();
@@ -64,5 +64,5 @@ pub fn copyDefaultPuzzles(allocator: Allocator) !void {
 }
 
 fn libraryPathAlloc(allocator: Allocator) ![]u8 {
-    return std.fs.path.join(allocator, &.{ mem.span(glib.getUserDataDir()), application_id });
+    return std.fs.path.join(allocator, &.{ mem.span(glib.getUserDataDir()), build_options.app_id });
 }
