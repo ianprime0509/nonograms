@@ -43,11 +43,13 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addAnonymousImport("puzzles", .{ .root_source_file = b.path("puzzles/puzzles.zig") });
     b.installArtifact(exe);
 
-    const metainfo = b.path("data/dev.ianjohnson.Nonograms.metainfo.xml");
+    const linguas = readLinguas(b);
+
+    const metainfo = generateMetainfo(b, linguas);
     const metainfo_install = b.addInstallFileWithDir(metainfo, metainfo_dir, b.fmt("{s}.metainfo.xml", .{app_id}));
     b.getInstallStep().dependOn(&metainfo_install.step);
 
-    const desktop = b.path("data/dev.ianjohnson.Nonograms.desktop");
+    const desktop = generateDesktop(b, linguas);
     const desktop_install = b.addInstallFileWithDir(desktop, desktop_dir, b.fmt("{s}.desktop", .{app_id}));
     b.getInstallStep().dependOn(&desktop_install.step);
 
@@ -106,4 +108,49 @@ pub fn build(b: *std.Build) !void {
 
     const xgettext_step = b.step("xgettext", "Generate nonograms.pot using xgettext");
     xgettext_step.dependOn(&run_xgettext.step);
+}
+
+fn readLinguas(b: *std.Build) []const []const u8 {
+    const max_bytes = 16 * 1024; // 16KB
+    const raw = std.fs.cwd().readFileAlloc(b.allocator, b.pathFromRoot("po/LINGUAS"), max_bytes) catch |err|
+        std.debug.panic("failed to read LINGUAS: {}", .{err});
+
+    var linguas = std.ArrayList([]const u8).init(b.allocator);
+    defer linguas.deinit();
+    var lines = std.mem.splitScalar(u8, raw, '\n');
+    while (lines.next()) |line| {
+        const trimmed_line = std.mem.trim(u8, line, &std.ascii.whitespace);
+        if (std.mem.startsWith(u8, trimmed_line, "#")) continue;
+        var items = std.mem.tokenizeAny(u8, trimmed_line, &std.ascii.whitespace);
+        while (items.next()) |item| {
+            linguas.append(item) catch @panic("OOM");
+        }
+    }
+    return linguas.toOwnedSlice() catch @panic("OOM");
+}
+
+fn generateMetainfo(b: *std.Build, linguas: []const []const u8) std.Build.LazyPath {
+    const base = b.path("data/dev.ianjohnson.Nonograms.metainfo.xml");
+
+    const translate = b.addSystemCommand(&.{ "msgfmt", "--xml" });
+    addPoDependencies(b, translate, linguas);
+    translate.addPrefixedDirectoryArg("-d", b.path("po"));
+    translate.addPrefixedFileArg("--template=", base);
+    return translate.addPrefixedOutputFileArg("-o", "dev.ianjohnson.Nonograms.metainfo.xml");
+}
+
+fn generateDesktop(b: *std.Build, linguas: []const []const u8) std.Build.LazyPath {
+    const base = b.path("data/dev.ianjohnson.Nonograms.desktop");
+
+    const translate = b.addSystemCommand(&.{ "msgfmt", "--desktop" });
+    addPoDependencies(b, translate, linguas);
+    translate.addPrefixedDirectoryArg("-d", b.path("po"));
+    translate.addPrefixedFileArg("--template=", base);
+    return translate.addPrefixedOutputFileArg("-o", "dev.ianjohnson.Nonograms.desktop");
+}
+
+fn addPoDependencies(b: *std.Build, run: *std.Build.Step.Run, linguas: []const []const u8) void {
+    for (linguas) |lingua| {
+        run.addFileInput(b.path(b.fmt("po/{s}.po", .{lingua})));
+    }
 }

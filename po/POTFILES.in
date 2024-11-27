@@ -1,8 +1,9 @@
-data/ui/color-button.ui
-data/ui/color-picker.ui
-data/ui/view.ui
-data/ui/window.ui
-
+data/dev.ianjohnson.Nonograms.desktop
+data/dev.ianjohnson.Nonograms.metainfo.xml
+data/resources/ui/color-button.ui
+data/resources/ui/color-picker.ui
+data/resources/ui/view.ui
+data/resources/ui/window.ui
 src/Library.zig
 src/main.zig
 src/pbn.zig
