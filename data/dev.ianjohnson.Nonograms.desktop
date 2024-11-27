@@ -1,9 +1,9 @@
 [Desktop Entry]
+Type=Application
 Name=Nonograms
 Comment=Solve nonogram puzzles
 Categories=Game;LogicGame
 Keywords=picross;paint-by-number;puzzle
-Type=Application
 Exec=nonograms %U
 DBusActivatable=true
 Terminal=false

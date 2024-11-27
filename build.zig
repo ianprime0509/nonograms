@@ -76,24 +76,34 @@ pub fn build(b: *std.Build) !void {
     resources.addFile("ui/window.ui", b.path("data/resources/ui/window.ui"), .{});
     exe.root_module.addImport("gresources", gresources.build(target));
 
-    const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
-    run_cmd.setEnvironmentVariable("XDG_DATA_HOME", b.getInstallPath(data_dir, "."));
+    const test_step = b.step("test", "Run unit tests");
 
-    const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
-
-    const exe_tests = b.addTest(.{
+    const exe_test = b.addTest(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
+    test_step.dependOn(&exe_test.step);
 
-    const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&exe_tests.step);
+    const metainfo_validate = b.addSystemCommand(&.{ "appstreamcli", "validate", "--no-net", "--strict" });
+    metainfo_validate.addFileArg(metainfo);
+    metainfo_validate.expectExitCode(0);
+    test_step.dependOn(&metainfo_validate.step);
+
+    const desktop_validate = b.addSystemCommand(&.{"desktop-file-validate"});
+    desktop_validate.addFileArg(desktop);
+    desktop_validate.expectExitCode(0);
+    test_step.dependOn(&desktop_validate.step);
+
+    const exe_run = b.addRunArtifact(exe);
+    exe_run.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        exe_run.addArgs(args);
+    }
+    exe_run.setEnvironmentVariable("XDG_DATA_HOME", b.getInstallPath(data_dir, "."));
+
+    const exe_run_step = b.step("run", "Run the app");
+    exe_run_step.dependOn(&exe_run.step);
 
     const run_xgettext = b.addSystemCommand(&.{
         "xgettext",

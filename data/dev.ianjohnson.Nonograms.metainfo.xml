@@ -1,14 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component type="desktop-application">
-  <id>dev.ianjohnson.Nonograms</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>0BSD</project_license>
+  <update_contact>ian@ianjohnson.dev</update_contact>
+
+  <id>dev.ianjohnson.Nonograms</id>
   <name>Nonograms</name>
   <summary>Solve nonogram puzzles</summary>
+  <developer id="ianjohnson.dev">
+    <name translate="no">Ian Johnson</name>
+  </developer>
+  <description>
+    <p>Nonograms (also known as Picross or paint-by-number puzzles) are
+      logic-based puzzles in which a picture is constructed on a grid
+      from row and column clues.</p>
+  </description>
+  <categories>
+    <category>Game</category>
+    <category>LogicGame</category>
+  </categories>
+  <keywords>
+    <keyword>picross</keyword>
+    <keyword>paint-by-number</keyword>
+  </keywords>
+
+  <launchable type="desktop-id">dev.ianjohnson.Nonograms.desktop</launchable>
+  <icon type="stock">dev.ianjohnson.Nonograms</icon>
+  <provides>
+    <binary>nonograms</binary>
+  </provides>
+
   <url type="homepage">https://github.com/ianprime0509/nonograms</url>
   <url type="bugtracker">https://github.com/ianprime0509/nonograms/issues</url>
   <url type="vcs-browser">https://github.com/ianprime0509/nonograms</url>
-  <developer id="ianjohnson.dev">
-    <name>Ian Johnson</name>
-  </developer>
+
+  <content_rating type="oars-1.1"/>
 </component>
