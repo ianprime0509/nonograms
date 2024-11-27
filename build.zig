@@ -13,6 +13,9 @@ pub fn build(b: *std.Build) !void {
 
     const data_dir: std.Build.InstallDir = .{ .custom = "share" };
     const locale_dir: std.Build.InstallDir = .{ .custom = "share/locale" };
+    const metainfo_dir: std.Build.InstallDir = .{ .custom = "share/metainfo" };
+    const desktop_dir: std.Build.InstallDir = .{ .custom = "share/applications" };
+    const icon_dir: std.Build.InstallDir = .{ .custom = "share/icons" };
     const build_options = b.addOptions();
     build_options.addOption(bool, "devel", devel);
     build_options.addOption([:0]const u8, "app_id", app_id);
@@ -38,15 +41,38 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("adw", gobject.module("adw1"));
     exe.root_module.addImport("libintl", b.dependency("libintl", .{}).module("libintl"));
     exe.root_module.addAnonymousImport("puzzles", .{ .root_source_file = b.path("puzzles/puzzles.zig") });
-    const gresources = gobject_build.addCompileResources(b, target, b.path("data/resources/gresources.xml"));
-    exe.root_module.addImport("gresources", gresources);
     b.installArtifact(exe);
 
-    b.installDirectory(.{
-        .source_dir = b.path("data/icons"),
-        .install_dir = data_dir,
-        .install_subdir = "icons",
-    });
+    const metainfo = b.path("data/dev.ianjohnson.Nonograms.metainfo.xml");
+    const metainfo_install = b.addInstallFileWithDir(metainfo, metainfo_dir, b.fmt("{s}.metainfo.xml", .{app_id}));
+    b.getInstallStep().dependOn(&metainfo_install.step);
+
+    const desktop = b.path("data/dev.ianjohnson.Nonograms.desktop");
+    const desktop_install = b.addInstallFileWithDir(desktop, desktop_dir, b.fmt("{s}.desktop", .{app_id}));
+    b.getInstallStep().dependOn(&desktop_install.step);
+
+    const scalable_icon = if (devel)
+        b.path("data/icons/hicolor/scalable/apps/dev.ianjohnson.Nonograms.Devel.svg")
+    else
+        b.path("data/icons/hicolor/scalable/apps/dev.ianjohnson.Nonograms.svg");
+    const scalable_icon_install = b.addInstallFileWithDir(scalable_icon, icon_dir, b.fmt("hicolor/scalable/apps/{s}.svg", .{app_id}));
+    b.getInstallStep().dependOn(&scalable_icon_install.step);
+
+    const symbolic_icon = b.path("data/icons/hicolor/symbolic/apps/dev.ianjohnson.Nonograms-symbolic.svg");
+    const symbolic_icon_install = b.addInstallFileWithDir(symbolic_icon, icon_dir, b.fmt("hicolor/symbolic/apps/{s}-symbolic.svg", .{app_id}));
+    b.getInstallStep().dependOn(&symbolic_icon_install.step);
+
+    var gresources = gobject_build.buildCompileResources(gobject);
+    const resources = gresources.addGroup("/dev/ianjohnson/Nonograms/");
+    resources.addFile("metainfo.xml", metainfo, .{});
+    resources.addFile("icons/scalable/actions/about-symbolic.svg", b.path("data/resources/icons/scalable/actions/about-symbolic.svg"), .{});
+    resources.addFile("icons/scalable/actions/library-symbolic.svg", b.path("data/resources/icons/scalable/actions/library-symbolic.svg"), .{});
+    resources.addFile("icons/scalable/actions/menu-symbolic.svg", b.path("data/resources/icons/scalable/actions/menu-symbolic.svg"), .{});
+    resources.addFile("ui/color-button.ui", b.path("data/resources/ui/color-button.ui"), .{});
+    resources.addFile("ui/color-picker.ui", b.path("data/resources/ui/color-picker.ui"), .{});
+    resources.addFile("ui/view.ui", b.path("data/resources/ui/view.ui"), .{});
+    resources.addFile("ui/window.ui", b.path("data/resources/ui/window.ui"), .{});
+    exe.root_module.addImport("gresources", gresources.build(target));
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

@@ -18,8 +18,7 @@
             .hash = "12200db01caa0380c3d87b16fb761c0c0c1ef8eeb9e27d25e6d1fcb1b678c51b4231",
         },
         .gobject = .{
-            .url = "https://github.com/ianprime0509/zig-gobject/releases/download/v0.2.2/bindings-gnome47.tar.zst",
-            .hash = "12208d70ee791d7ef7e16e1c3c9c1127b57f1ed066a24f87d57fc9f730c5dc394b9d",
+            .path = "../zig-gobject/zig-out/bindings",
         },
         .libintl = .{
             .url = "git+https://github.com/ianprime0509/zig-libintl?ref=main#0c436aa63c31bb8ad5d7d59800638f784e1e04a5",
