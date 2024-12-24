@@ -89,12 +89,22 @@ const ApplicationWindow = extern struct {
         info_author: *gtk.Label,
         info_copyright: *gtk.Label,
         info_source: *gtk.Label,
-        puzzle_set: ?pbn.PuzzleSet,
-        puzzle_set_uri: ?[:0]u8,
-        puzzle_index: ?usize,
+        puzzle_state: ?PuzzleState,
         clear_action: *gio.SimpleAction,
 
         var offset: c_int = 0;
+    };
+
+    const PuzzleState = struct {
+        set: pbn.PuzzleSet,
+        file: *gio.File,
+        index: ?usize,
+
+        fn deinit(puzzle: *PuzzleState) void {
+            puzzle.set.deinit();
+            puzzle.file.unref();
+            puzzle.* = undefined;
+        }
     };
 
     pub const getGObjectType = gobject.ext.defineClass(ApplicationWindow, .{
@@ -149,12 +159,8 @@ const ApplicationWindow = extern struct {
     }
 
     fn finalize(win: *ApplicationWindow) callconv(.C) void {
-        if (win.private().library) |*library| {
-            library.deinit();
-        }
-        if (win.private().puzzle_set) |*puzzle_set| {
-            puzzle_set.deinit();
-        }
+        if (win.private().library) |*library| library.deinit();
+        if (win.private().puzzle_state) |*puzzle| puzzle.deinit();
         gobject.Object.virtual_methods.finalize.call(Class.parent, win.as(Parent));
     }
 
@@ -198,25 +204,19 @@ const ApplicationWindow = extern struct {
     fn openFile(win: *ApplicationWindow, file: *gio.File) void {
         const contents = file.loadBytes(null, null, null) orelse return;
         defer contents.unref();
-        if (win.private().puzzle_set_uri) |uri| {
-            glib.free(uri.ptr);
-        }
-        const uri = mem.sliceTo(file.getUri(), 0);
-        win.private().puzzle_set_uri = uri;
-        const bytes = glib.ext.Bytes.getDataSlice(contents);
-        const puzzle_set = pbn.PuzzleSet.parseBytes(c_allocator, bytes) catch {
+        const puzzle_set = pbn.PuzzleSet.parseBytes(c_allocator, glib.ext.Bytes.getDataSlice(contents)) catch {
             adw.ToastOverlay.addToast(win.private().toast_overlay, adw.Toast.new(intl.gettext("Failed to load puzzle")));
             return;
         };
-        win.loadPuzzleSet(puzzle_set);
-    }
 
-    fn loadPuzzleSet(win: *ApplicationWindow, puzzle_set: pbn.PuzzleSet) void {
-        if (win.private().puzzle_set) |*ps| {
-            ps.deinit();
-        }
-        win.private().puzzle_set = puzzle_set;
-        win.private().puzzle_index = null;
+        if (win.private().puzzle_state) |*old_state| old_state.deinit();
+        file.ref();
+        win.private().puzzle_state = .{
+            .set = puzzle_set,
+            .file = file,
+            .index = null,
+        };
+
         const puzzle_list = win.private().puzzle_list;
         while (gtk.Widget.getFirstChild(puzzle_list.as(gtk.Widget))) |child| {
             gtk.ListBox.remove(puzzle_list, child);
@@ -256,22 +256,22 @@ const ApplicationWindow = extern struct {
     }
 
     fn loadPuzzle(win: *ApplicationWindow, puzzle: pbn.Puzzle) void {
-        const puzzle_set = win.private().puzzle_set orelse return;
+        const state = win.private().puzzle_state orelse return;
         adw.WindowTitle.setSubtitle(win.private().window_title, puzzle.title orelse "");
         gtk.Label.setLabel(win.private().info_title, puzzle.title orelse intl.gettext("Untitled puzzle"));
-        if (puzzle.author orelse puzzle_set.author) |author| {
+        if (puzzle.author orelse state.set.author) |author| {
             gtk.Label.setLabel(win.private().info_author, author);
             gtk.Widget.setVisible(win.private().info_author.as(gtk.Widget), 1);
         } else {
             gtk.Widget.setVisible(win.private().info_author.as(gtk.Widget), 0);
         }
-        if (puzzle.copyright orelse puzzle_set.copyright) |copyright| {
+        if (puzzle.copyright orelse state.set.copyright) |copyright| {
             gtk.Label.setLabel(win.private().info_copyright, copyright);
             gtk.Widget.setVisible(win.private().info_copyright.as(gtk.Widget), 1);
         } else {
             gtk.Widget.setVisible(win.private().info_copyright.as(gtk.Widget), 0);
         }
-        if (puzzle.source orelse puzzle_set.source) |source| {
+        if (puzzle.source orelse state.set.source) |source| {
             gtk.Label.setLabel(win.private().info_source, source);
             gtk.Widget.setVisible(win.private().info_source.as(gtk.Widget), 1);
         } else {
@@ -301,7 +301,9 @@ const ApplicationWindow = extern struct {
     }
 
     fn handleOpenReady(dialog: *gtk.FileDialog, res: *gio.AsyncResult, win: *ApplicationWindow) callconv(.C) void {
-        win.openFile(gtk.FileDialog.openFinish(dialog, res, null) orelse return);
+        const file = gtk.FileDialog.openFinish(dialog, res, null) orelse return;
+        defer file.unref();
+        win.openFile(file);
     }
 
     fn handleClearAction(_: *gio.SimpleAction, _: ?*glib.Variant, win: *ApplicationWindow) callconv(.C) void {
@@ -345,32 +347,28 @@ const ApplicationWindow = extern struct {
     }
 
     fn handlePuzzleRowActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, win: *ApplicationWindow) callconv(.C) void {
-        const puzzle_set = win.private().puzzle_set orelse return;
+        const state = &(win.private().puzzle_state orelse return);
         const index: usize = @intCast(row.getIndex());
-        if (index >= puzzle_set.puzzles.len) {
+        if (index >= state.set.puzzles.len) {
             return;
         }
-        win.private().puzzle_index = index;
-        win.loadPuzzle(puzzle_set.puzzles[index]);
+        state.index = index;
+        win.loadPuzzle(state.set.puzzles[index]);
     }
 
     fn handlePuzzleSolved(_: *View, win: *ApplicationWindow) callconv(.C) void {
-        const puzzle_set = win.private().puzzle_set orelse return;
-        const puzzle = puzzle_set.puzzles[win.private().puzzle_index orelse return];
+        const state = win.private().puzzle_state orelse return;
+        const puzzle = state.set.puzzles[state.index orelse return];
         adw.ToastOverlay.addToast(win.private().toast_overlay, adw.Toast.new(puzzle.description orelse "Congratulations!"));
     }
 
     fn saveCurrentImage(win: *ApplicationWindow) void {
-        const puzzle_set_path = path: {
-            const uri = win.private().puzzle_set_uri orelse return;
-            const file = gio.File.newForUri(uri);
-            defer file.unref();
-            break :path mem.sliceTo(file.getPath() orelse return, 0);
-        };
-        defer glib.free(puzzle_set_path.ptr);
-        const puzzle_index = win.private().puzzle_index orelse return;
+        const state = win.private().puzzle_state orelse return;
+        const puzzle_index = state.index orelse return;
+        const path = mem.sliceTo(state.file.getPath() orelse return, 0);
+        defer glib.free(path.ptr);
 
-        var puzzle_set = win.private().puzzle_set orelse return;
+        var puzzle_set = state.set;
         var puzzle = puzzle_set.puzzles[puzzle_index];
         const image = (win.private().view.getImage(c_allocator, puzzle.colors.values()) catch return) orelse return;
         defer image.deinit(c_allocator);
@@ -392,7 +390,7 @@ const ApplicationWindow = extern struct {
         puzzles[puzzle_index] = puzzle;
         puzzle_set.puzzles = puzzles;
 
-        puzzle_set.writeFile(c_allocator, puzzle_set_path) catch return;
+        puzzle_set.writeFile(c_allocator, path) catch return;
     }
 
     fn private(win: *ApplicationWindow) *Private {
