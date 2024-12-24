@@ -286,20 +286,22 @@ const ApplicationWindow = extern struct {
     }
 
     fn handleOpenAction(_: *gio.SimpleAction, _: ?*glib.Variant, win: *ApplicationWindow) callconv(.C) void {
-        const chooser = gtk.FileChooserNative.new(
-            intl.gettext("Open Puzzle"),
-            win.as(gtk.Window),
-            .open,
-            intl.gettext("_Open"),
-            intl.gettext("_Cancel"),
-        );
+        const dialog = gtk.FileDialog.new();
+        defer dialog.unref();
+        gtk.FileDialog.setTitle(dialog, intl.gettext("Open Puzzle"));
+        const filters = gio.ListStore.new(gtk.FileFilter.getGObjectType());
+        defer filters.unref();
         const filter = gtk.FileFilter.new();
         gtk.FileFilter.setName(filter, "PBN XML");
         gtk.FileFilter.addPattern(filter, "*.pbn");
         gtk.FileFilter.addPattern(filter, "*.xml");
-        gtk.FileChooser.addFilter(chooser.as(gtk.FileChooser), filter);
-        _ = gtk.NativeDialog.signals.response.connect(chooser, *ApplicationWindow, &handleOpenResponse, win, .{});
-        gtk.NativeDialog.show(chooser.as(gtk.NativeDialog));
+        filters.append(filter.as(gobject.Object));
+        gtk.FileDialog.setFilters(dialog, filters.as(gio.ListModel));
+        gtk.FileDialog.open(dialog, win.as(gtk.Window), null, @ptrCast(&handleOpenReady), win);
+    }
+
+    fn handleOpenReady(dialog: *gtk.FileDialog, res: *gio.AsyncResult, win: *ApplicationWindow) callconv(.C) void {
+        win.openFile(gtk.FileDialog.openFinish(dialog, res, null) orelse return);
     }
 
     fn handleClearAction(_: *gio.SimpleAction, _: ?*glib.Variant, win: *ApplicationWindow) callconv(.C) void {
@@ -319,14 +321,6 @@ const ApplicationWindow = extern struct {
         const about = adw.AboutWindow.newFromAppdata("/dev/ianjohnson/Nonograms/metainfo.xml", null);
         gtk.Window.setTransientFor(about.as(gtk.Window), win.as(gtk.Window));
         gtk.Window.present(about.as(gtk.Window));
-    }
-
-    fn handleOpenResponse(chooser: *gtk.FileChooserNative, _: c_int, win: *ApplicationWindow) callconv(.C) void {
-        defer chooser.unref();
-        win.saveCurrentImage();
-        const file = gtk.FileChooser.getFile(chooser.as(gtk.FileChooser)) orelse return;
-        defer file.unref();
-        win.openFile(file);
     }
 
     fn handleCloseRequest(win: *ApplicationWindow, _: ?*anyopaque) callconv(.C) c_int {
