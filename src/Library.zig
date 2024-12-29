@@ -8,7 +8,7 @@ const Allocator = mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const glib = @import("glib");
 const default_puzzles = @import("puzzles").default_puzzles;
-const pbn = @import("pbn.zig");
+const pbn = @import("libpbn");
 
 const Library = @This();
 
@@ -41,11 +41,13 @@ pub fn load(parent_allocator: Allocator) !Library {
         const child_file = library_dir.openFile(child.name, .{}) catch continue;
         defer child_file.close();
         var child_buf_reader = std.io.bufferedReader(child_file.reader());
-        var puzzle_set = pbn.PuzzleSet.parseReader(allocator, child_buf_reader.reader()) catch continue;
+        var diag: pbn.Diagnostics = .init(allocator);
+        defer diag.deinit();
+        var puzzle_set = pbn.PuzzleSet.parseReader(allocator, child_buf_reader.reader(), &diag) catch continue;
         defer puzzle_set.deinit();
         try entries.append(.{
             .path = try std.fs.path.joinZ(allocator, &.{ library_path, child.name }),
-            .title = if (puzzle_set.title) |title| try allocator.dupeZ(u8, title) else null,
+            .title = if (puzzle_set.title(.root)) |title| try allocator.dupeZ(u8, title) else null,
         });
     }
 

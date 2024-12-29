@@ -13,16 +13,16 @@
         "screenshot.png",
     },
     .dependencies = .{
-        .xml = .{
-            .url = "git+https://github.com/ianprime0509/zig-xml?ref=main#5656de48d8febd88f80ca9876591a2bec4daffad",
-            .hash = "12200db01caa0380c3d87b16fb761c0c0c1ef8eeb9e27d25e6d1fcb1b678c51b4231",
-        },
         .gobject = .{
             .path = "../zig-gobject/zig-out/bindings",
         },
         .libintl = .{
             .url = "git+https://github.com/ianprime0509/zig-libintl?ref=main#0c436aa63c31bb8ad5d7d59800638f784e1e04a5",
             .hash = "1220e1f1576da3188a8749940f836cfb4f858ee3455660b05c67984ddc29cf63956e",
+        },
+        .libpbn = .{
+            .url = "git+https://github.com/ianprime0509/libpbn?ref=main#eab04ae541e527609a03cb60632bbbab2eaa7e27",
+            .hash = "1220283c6aff43e4a79908eb70b2a743702ac7245a0d1db05328110a4ff4e7b1df43",
         },
     },
 }
