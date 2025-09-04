@@ -31,7 +31,7 @@ pub fn load(parent_allocator: Allocator) !Library {
     errdefer arena.deinit();
     const allocator = arena.allocator();
 
-    var entries = std.ArrayList(Entry).init(allocator);
+    var entries: std.ArrayList(Entry) = .empty;
     var library_dir_iter = library_dir.iterate();
     while (try library_dir_iter.next()) |child| {
         if (child.kind != .file or !mem.endsWith(u8, child.name, ".pbn")) {
@@ -40,18 +40,19 @@ pub fn load(parent_allocator: Allocator) !Library {
 
         const child_file = library_dir.openFile(child.name, .{}) catch continue;
         defer child_file.close();
-        var child_buf_reader = std.io.bufferedReader(child_file.reader());
+        var buf: [1024]u8 = undefined;
+        var file_reader = child_file.reader(&buf);
         var diag: pbn.Diagnostics = .init(allocator);
         defer diag.deinit();
-        var puzzle_set = pbn.PuzzleSet.parseReader(allocator, child_buf_reader.reader(), &diag) catch continue;
+        var puzzle_set = pbn.PuzzleSet.parseReader(allocator, &file_reader.interface, &diag) catch continue;
         defer puzzle_set.deinit();
-        try entries.append(.{
+        try entries.append(allocator, .{
             .path = try std.fs.path.joinZ(allocator, &.{ library_path, child.name }),
             .title = if (puzzle_set.title(.root)) |title| try allocator.dupeZ(u8, title) else null,
         });
     }
 
-    return .{ .entries = try entries.toOwnedSlice(), .arena = arena };
+    return .{ .entries = try entries.toOwnedSlice(allocator), .arena = arena };
 }
 
 pub fn copyDefaultPuzzles(allocator: Allocator) !void {

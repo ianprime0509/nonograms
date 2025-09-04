@@ -49,7 +49,7 @@ const Application = extern struct {
         return gobject.ext.as(T, app);
     }
 
-    fn activateImpl(app: *Application) callconv(.C) void {
+    fn activateImpl(app: *Application) callconv(.c) void {
         const win = ApplicationWindow.new(app);
         gtk.Window.present(win.as(gtk.Window));
     }
@@ -63,7 +63,7 @@ const Application = extern struct {
             return gobject.ext.as(T, class);
         }
 
-        fn init(class: *Class) callconv(.C) void {
+        fn init(class: *Class) callconv(.c) void {
             gio.Application.virtual_methods.activate.implement(class, &Application.activateImpl);
         }
     };
@@ -123,7 +123,7 @@ const ApplicationWindow = extern struct {
         return gobject.ext.as(T, win);
     }
 
-    fn init(win: *ApplicationWindow, _: *Class) callconv(.C) void {
+    fn init(win: *ApplicationWindow, _: *Class) callconv(.c) void {
         gtk.Widget.initTemplate(win.as(gtk.Widget));
 
         const open = gio.SimpleAction.new("open", null);
@@ -153,12 +153,12 @@ const ApplicationWindow = extern struct {
         win.loadLibrary();
     }
 
-    fn dispose(win: *ApplicationWindow) callconv(.C) void {
+    fn dispose(win: *ApplicationWindow) callconv(.c) void {
         gtk.Widget.disposeTemplate(win.as(gtk.Widget), getGObjectType());
         gobject.Object.virtual_methods.dispose.call(Class.parent, win.as(Parent));
     }
 
-    fn finalize(win: *ApplicationWindow) callconv(.C) void {
+    fn finalize(win: *ApplicationWindow) callconv(.c) void {
         if (win.private().library) |*library| library.deinit();
         if (win.private().puzzle_state) |*puzzle| puzzle.deinit();
         gobject.Object.virtual_methods.finalize.call(Class.parent, win.as(Parent));
@@ -291,7 +291,7 @@ const ApplicationWindow = extern struct {
         gio.SimpleAction.setEnabled(win.private().clear_action, 1);
     }
 
-    fn handleOpenAction(_: *gio.SimpleAction, _: ?*glib.Variant, win: *ApplicationWindow) callconv(.C) void {
+    fn handleOpenAction(_: *gio.SimpleAction, _: ?*glib.Variant, win: *ApplicationWindow) callconv(.c) void {
         const dialog = gtk.FileDialog.new();
         defer dialog.unref();
         gtk.FileDialog.setTitle(dialog, intl.gettext("Open Puzzle"));
@@ -306,13 +306,13 @@ const ApplicationWindow = extern struct {
         gtk.FileDialog.open(dialog, win.as(gtk.Window), null, @ptrCast(&handleOpenReady), win);
     }
 
-    fn handleOpenReady(dialog: *gtk.FileDialog, res: *gio.AsyncResult, win: *ApplicationWindow) callconv(.C) void {
+    fn handleOpenReady(dialog: *gtk.FileDialog, res: *gio.AsyncResult, win: *ApplicationWindow) callconv(.c) void {
         const file = gtk.FileDialog.openFinish(dialog, res, null) orelse return;
         defer file.unref();
         win.openFile(file);
     }
 
-    fn handleClearAction(_: *gio.SimpleAction, _: ?*glib.Variant, win: *ApplicationWindow) callconv(.C) void {
+    fn handleClearAction(_: *gio.SimpleAction, _: ?*glib.Variant, win: *ApplicationWindow) callconv(.c) void {
         win.private().view.clear();
         const toast = adw.Toast.new("Puzzle cleared");
         adw.Toast.setButtonLabel(toast, "Undo");
@@ -320,28 +320,28 @@ const ApplicationWindow = extern struct {
         adw.ToastOverlay.addToast(win.private().toast_overlay, toast);
     }
 
-    fn handleUndoClear(toast: *adw.Toast, win: *ApplicationWindow) callconv(.C) void {
+    fn handleUndoClear(toast: *adw.Toast, win: *ApplicationWindow) callconv(.c) void {
         adw.Toast.dismiss(toast);
         win.private().view.undoClear();
     }
 
-    fn handleAboutAction(_: *gio.SimpleAction, _: ?*glib.Variant, win: *ApplicationWindow) callconv(.C) void {
+    fn handleAboutAction(_: *gio.SimpleAction, _: ?*glib.Variant, win: *ApplicationWindow) callconv(.c) void {
         const about = adw.AboutWindow.newFromAppdata("/dev/ianjohnson/Nonograms/metainfo.xml", null);
         gtk.Window.setTransientFor(about.as(gtk.Window), win.as(gtk.Window));
         gtk.Window.present(about.as(gtk.Window));
     }
 
-    fn handleCloseRequest(win: *ApplicationWindow, _: ?*anyopaque) callconv(.C) c_int {
+    fn handleCloseRequest(win: *ApplicationWindow, _: ?*anyopaque) callconv(.c) c_int {
         win.saveCurrentImage();
         return 0;
     }
 
-    fn handleLibraryMenuButtonClicked(_: *gtk.Button, win: *ApplicationWindow) callconv(.C) void {
+    fn handleLibraryMenuButtonClicked(_: *gtk.Button, win: *ApplicationWindow) callconv(.c) void {
         win.saveCurrentImage();
         win.loadLibrary();
     }
 
-    fn handleLibraryRowActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, win: *ApplicationWindow) callconv(.C) void {
+    fn handleLibraryRowActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, win: *ApplicationWindow) callconv(.c) void {
         const library = win.private().library orelse return;
         const index: usize = @intCast(row.getIndex());
         if (index >= library.entries.len) {
@@ -352,13 +352,13 @@ const ApplicationWindow = extern struct {
         win.openFile(file);
     }
 
-    fn handlePuzzleRowActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, win: *ApplicationWindow) callconv(.C) void {
+    fn handlePuzzleRowActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, win: *ApplicationWindow) callconv(.c) void {
         const state = &(win.private().puzzle_state orelse return);
         state.puzzle = @enumFromInt(row.getIndex() + 1);
         win.loadPuzzle();
     }
 
-    fn handlePuzzleSolved(_: *View, win: *ApplicationWindow) callconv(.C) void {
+    fn handlePuzzleSolved(_: *View, win: *ApplicationWindow) callconv(.c) void {
         const state = win.private().puzzle_state orelse return;
         adw.ToastOverlay.addToast(win.private().toast_overlay, adw.Toast.new(state.set.description(state.puzzle) orelse "Congratulations!"));
     }
@@ -366,12 +366,12 @@ const ApplicationWindow = extern struct {
     fn saveCurrentImage(win: *ApplicationWindow) void {
         const state = win.private().puzzle_state orelse return;
         const path = std.mem.span(state.file.getPath() orelse return);
-        var rendered: std.ArrayListUnmanaged(u8) = .empty;
-        defer rendered.deinit(c_allocator);
-        state.set.render(c_allocator, rendered.writer(c_allocator)) catch oom();
+        var rendered: std.Io.Writer.Allocating = .init(c_allocator);
+        defer rendered.deinit();
+        state.set.render(c_allocator, &rendered.writer) catch oom();
         std.fs.cwd().writeFile(.{
             .sub_path = path,
-            .data = rendered.items,
+            .data = rendered.written(),
         }) catch return; // TODO: error handling
     }
 
@@ -390,7 +390,7 @@ const ApplicationWindow = extern struct {
             return gobject.ext.as(T, class);
         }
 
-        fn init(class: *Class) callconv(.C) void {
+        fn init(class: *Class) callconv(.c) void {
             gobject.Object.virtual_methods.dispose.implement(class, &dispose);
             gobject.Object.virtual_methods.finalize.implement(class, &finalize);
             gtk.Widget.Class.setTemplateFromResource(class.as(gtk.Widget.Class), "/dev/ianjohnson/Nonograms/ui/window.ui");
