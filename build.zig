@@ -21,26 +21,30 @@ pub fn build(b: *std.Build) !void {
     build_options.addOption([:0]const u8, "app_id", app_id);
     build_options.addOption([]const u8, "locale_dir", b.getInstallPath(locale_dir, ""));
 
-    const exe = b.addExecutable(.{
-        .name = "nonograms",
+    const mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
-    exe.linkLibC();
-    exe.root_module.addOptions("build_options", build_options);
-    exe.root_module.addImport("libpbn", libpbn);
-    exe.root_module.addImport("glib", gobject.module("glib2"));
-    exe.root_module.addImport("gobject", gobject.module("gobject2"));
-    exe.root_module.addImport("gio", gobject.module("gio2"));
-    exe.root_module.addImport("gdk", gobject.module("gdk4"));
-    exe.root_module.addImport("gtk", gobject.module("gtk4"));
-    exe.root_module.addImport("cairo", gobject.module("cairo1"));
-    exe.root_module.addImport("pango", gobject.module("pango1"));
-    exe.root_module.addImport("pangocairo", gobject.module("pangocairo1"));
-    exe.root_module.addImport("adw", gobject.module("adw1"));
-    exe.root_module.addImport("libintl", b.dependency("libintl", .{}).module("libintl"));
-    exe.root_module.addAnonymousImport("puzzles", .{ .root_source_file = b.path("puzzles/puzzles.zig") });
+    mod.addOptions("build_options", build_options);
+    mod.addImport("libpbn", libpbn);
+    mod.addImport("glib", gobject.module("glib2"));
+    mod.addImport("gobject", gobject.module("gobject2"));
+    mod.addImport("gio", gobject.module("gio2"));
+    mod.addImport("gdk", gobject.module("gdk4"));
+    mod.addImport("gtk", gobject.module("gtk4"));
+    mod.addImport("cairo", gobject.module("cairo1"));
+    mod.addImport("pango", gobject.module("pango1"));
+    mod.addImport("pangocairo", gobject.module("pangocairo1"));
+    mod.addImport("adw", gobject.module("adw1"));
+    mod.addImport("libintl", b.dependency("libintl", .{}).module("libintl"));
+    mod.addAnonymousImport("puzzles", .{ .root_source_file = b.path("puzzles/puzzles.zig") });
+
+    const exe = b.addExecutable(.{
+        .name = "nonograms",
+        .root_module = mod,
+    });
     b.installArtifact(exe);
 
     const linguas = readLinguas(b);
@@ -74,14 +78,12 @@ pub fn build(b: *std.Build) !void {
     resources.addFile("ui/color-picker.ui", b.path("data/resources/ui/color-picker.ui"), .{});
     resources.addFile("ui/view.ui", b.path("data/resources/ui/view.ui"), .{});
     resources.addFile("ui/window.ui", b.path("data/resources/ui/window.ui"), .{});
-    exe.root_module.addImport("gresources", gresources.build(target));
+    mod.addImport("gresources", gresources.build(target));
 
     const test_step = b.step("test", "Run unit tests");
 
     const exe_test = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = mod,
     });
     test_step.dependOn(&exe_test.step);
 
@@ -125,18 +127,18 @@ fn readLinguas(b: *std.Build) []const []const u8 {
     const raw = std.fs.cwd().readFileAlloc(b.allocator, b.pathFromRoot("po/LINGUAS"), max_bytes) catch |err|
         std.debug.panic("failed to read LINGUAS: {}", .{err});
 
-    var linguas = std.ArrayList([]const u8).init(b.allocator);
-    defer linguas.deinit();
+    var linguas: std.ArrayList([]const u8) = .empty;
+    defer linguas.deinit(b.allocator);
     var lines = std.mem.splitScalar(u8, raw, '\n');
     while (lines.next()) |line| {
         const trimmed_line = std.mem.trim(u8, line, &std.ascii.whitespace);
         if (std.mem.startsWith(u8, trimmed_line, "#")) continue;
         var items = std.mem.tokenizeAny(u8, trimmed_line, &std.ascii.whitespace);
         while (items.next()) |item| {
-            linguas.append(item) catch @panic("OOM");
+            linguas.append(b.allocator, item) catch @panic("OOM");
         }
     }
-    return linguas.toOwnedSlice() catch @panic("OOM");
+    return linguas.toOwnedSlice(b.allocator) catch @panic("OOM");
 }
 
 fn generateMetainfo(b: *std.Build, linguas: []const []const u8) std.Build.LazyPath {
